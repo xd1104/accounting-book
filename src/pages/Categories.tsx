@@ -4,7 +4,8 @@ import type { Category, TxnType } from '../lib/types'
 import { Sheet } from '../components/Sheet'
 import { PALETTE } from '../lib/defaults'
 import { IconPlus, IconTrash } from '../components/icons'
-import { ColorPicker, EmojiPicker } from '../components/pickers'
+import { ColorPicker } from '../components/pickers'
+import { EmojiField } from '../components/EmojiField'
 
 export function Categories() {
   const { data, addCategory, updateCategory, deleteCategory } = useStore()
@@ -141,20 +142,14 @@ function CategoryEditor({
     >
       <div className="space-y-4 pb-2">
         <div className="flex items-center gap-3">
-          <span
-            className="w-14 h-14 shrink-0 grid place-items-center rounded-2xl text-2xl"
-            style={{ background: `${color}22` }}
-          >
-            {emoji}
-          </span>
+          <EmojiField value={emoji} color={color} onChange={setEmoji} />
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="分類名稱"
-            className="flex-1 h-12 px-3 rounded-2xl bg-surface2 outline-none placeholder:text-faint"
+            className="flex-1 min-w-0 h-12 px-3 rounded-2xl bg-surface2 outline-none placeholder:text-faint"
           />
         </div>
-        <EmojiPicker value={emoji} onChange={setEmoji} />
         <ColorPicker value={color} onChange={setColor} />
       </div>
     </Sheet>

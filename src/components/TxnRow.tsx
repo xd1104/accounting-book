@@ -15,6 +15,7 @@ export function TxnRow({
 }) {
   const cat = data.categories.find((c) => c.id === txn.categoryId)
   const acc = data.accounts.find((a) => a.id === txn.accountId)
+  const wallet = data.wallets.find((w) => w.id === txn.walletId)
   const sym = data.settings.currencySymbol
   const firstPhoto = txn.photos?.[0] ?? null
   const photoURL = usePhotoURL(firstPhoto)
@@ -51,7 +52,7 @@ export function TxnRow({
         </span>
         <span className="block text-xs text-muted truncate">
           {txn.note ? `${cat?.name ?? '未分類'} · ` : ''}
-          {acc ? acc.name : '未指定帳戶'}
+          {wallet ? `${wallet.emoji} ${wallet.name}` : (acc?.name ?? '未指定')}
           {showDate ? ` · ${txn.date.slice(5).replace('-', '/')}` : ''}
         </span>
       </span>

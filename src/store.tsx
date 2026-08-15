@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { Account, AppData, Category, MonthPlan, Settings, Txn } from './lib/types'
+import type { Account, AppData, Category, MonthPlan, Settings, Txn, Wallet } from './lib/types'
 import { LocalStorageAdapter } from './lib/storage'
 import type { StorageAdapter } from './lib/storage'
 import { emptyData, uid } from './lib/defaults'
@@ -27,6 +27,10 @@ interface Store {
   addAccount: (a: Omit<Account, 'id' | 'order'>) => string
   updateAccount: (id: string, patch: Partial<Account>) => void
   deleteAccount: (id: string) => void
+
+  addWallet: (w: Omit<Wallet, 'id' | 'order'>) => string
+  updateWallet: (id: string, patch: Partial<Wallet>) => void
+  deleteWallet: (id: string) => void
 
   updateSettings: (patch: Partial<Settings>) => void
   replaceAll: (data: AppData) => void
@@ -180,6 +184,35 @@ export function StoreProvider({
           return used
             ? { ...d, accounts: d.accounts.map((a) => (a.id === id ? { ...a, archived: true } : a)) }
             : { ...d, accounts: d.accounts.filter((a) => a.id !== id) }
+        })
+      },
+
+      addWallet(w) {
+        const id = uid()
+        mutate((d) => ({
+          ...d,
+          wallets: [...d.wallets, { ...w, id, order: nextOrder(d.wallets) }],
+        }))
+        return id
+      },
+      updateWallet(id, patch) {
+        mutate((d) => ({
+          ...d,
+          wallets: d.wallets.map((w) => (w.id === id ? { ...w, ...patch } : w)),
+        }))
+      },
+      deleteWallet(id) {
+        // Referenced wallets are archived so old records keep their label.
+        mutate((d) => {
+          const used =
+            d.txns.some((t) => t.walletId === id) ||
+            d.accounts.some((a) => a.walletId === id) ||
+            Object.values(d.plans).some((p) =>
+              p.allocations.some((a) => a.splits?.some((s) => s.walletId === id)),
+            )
+          return used
+            ? { ...d, wallets: d.wallets.map((w) => (w.id === id ? { ...w, archived: true } : w)) }
+            : { ...d, wallets: d.wallets.filter((w) => w.id !== id) }
         })
       },
 

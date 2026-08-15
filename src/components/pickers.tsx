@@ -1,33 +1,4 @@
-import { CATEGORY_EMOJIS, PALETTE } from '../lib/defaults'
-
-export function EmojiPicker({
-  value,
-  onChange,
-  label = '圖示',
-}: {
-  value: string
-  onChange: (v: string) => void
-  label?: string
-}) {
-  return (
-    <div>
-      <div className="text-sm text-muted mb-2">{label}</div>
-      <div className="grid grid-cols-8 gap-1.5">
-        {CATEGORY_EMOJIS.map((e) => (
-          <button
-            key={e}
-            onClick={() => onChange(e)}
-            className={`aspect-square rounded-xl text-xl grid place-items-center transition ${
-              value === e ? 'bg-brand-soft ring-2 ring-brand' : 'bg-surface2'
-            }`}
-          >
-            {e}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
+import { PALETTE } from '../lib/defaults'
 
 export function ColorPicker({
   value,

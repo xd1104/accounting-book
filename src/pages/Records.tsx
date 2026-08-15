@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useStore } from '../store'
-import { summarize, txnsInPeriod } from '../lib/budget'
+import { allowanceByWallet, summarize, txnsInPeriod } from '../lib/budget'
 import { addMonths, currentPeriod, formatDateLabel, formatMonthLabel } from '../lib/date'
 import { money } from '../lib/format'
 import { TxnRow } from '../components/TxnRow'
@@ -17,6 +17,7 @@ export function Records({ onEditTxn }: { onEditTxn: (id: string) => void }) {
   const [q, setQ] = useState('')
 
   const s = useMemo(() => summarize(data, month), [data, month])
+  const walletRows = useMemo(() => allowanceByWallet(data, month), [data, month])
 
   const groups = useMemo(() => {
     const query = q.trim().toLowerCase()
@@ -56,20 +57,63 @@ export function Records({ onEditTxn }: { onEditTxn: (id: string) => void }) {
         </button>
       </div>
 
-      {/* month summary */}
-      <div className="bg-surface rounded-3xl p-4 grid grid-cols-3 text-center">
-        <div>
-          <div className="text-[11px] text-muted mb-1">收入</div>
-          <div className="font-bold tnum text-ok">{money(s.incomeTotal, sym)}</div>
+      {/* month summary — the allowance balance is the number that matters day to day;
+          income is just the salary every month, so it earns no space here. */}
+      <div className="bg-surface rounded-3xl p-4">
+        <div className="grid grid-cols-2 text-center">
+          <div className="border-r border-line">
+            <div className="text-[11px] text-muted mb-1">零用錢結餘</div>
+            <div
+              className={`text-xl font-bold tnum ${s.allowanceLeft < 0 ? 'text-bad' : 'text-ok'}`}
+            >
+              {money(s.allowanceLeft, sym)}
+            </div>
+            <div className="text-[10px] text-faint mt-0.5 tnum">
+              共 {money(s.allowanceTotal, sym)}
+            </div>
+          </div>
+          <div>
+            <div className="text-[11px] text-muted mb-1">本月支出</div>
+            <div className="text-xl font-bold tnum">{money(s.expenseTotal, sym)}</div>
+            {s.daysLeft > 0 && (
+              <div className="text-[10px] text-faint mt-0.5 tnum">
+                剩 {s.daysLeft} 天 · 每天 {money(s.suggestedDaily, sym)}
+              </div>
+            )}
+          </div>
         </div>
-        <div className="border-x border-line">
-          <div className="text-[11px] text-muted mb-1">支出</div>
-          <div className="font-bold tnum">{money(s.expenseTotal, sym)}</div>
-        </div>
-        <div>
-          <div className="text-[11px] text-muted mb-1">結餘</div>
-          <div className={`font-bold tnum ${s.net < 0 ? 'text-bad' : ''}`}>{money(s.net, sym)}</div>
-        </div>
+
+        {walletRows.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-line space-y-1.5">
+            {walletRows.map((r) => (
+              <div key={r.walletId ?? 'none'} className="flex items-center gap-2 text-sm">
+                <span
+                  className="w-6 h-6 shrink-0 grid place-items-center rounded-full text-xs"
+                  style={{ background: `${r.color}22` }}
+                >
+                  {r.emoji}
+                </span>
+                <span className="flex-1 min-w-0 truncate text-muted">{r.name}</span>
+                {r.allocated > 0 ? (
+                  <>
+                    <span className="text-[11px] text-faint tnum">
+                      已花 {money(r.spent, sym)} /{' '}
+                    </span>
+                    <span className={`tnum font-semibold ${r.left < 0 ? 'text-bad' : ''}`}>
+                      {money(r.left, sym)}
+                    </span>
+                  </>
+                ) : (
+                  // Nothing was allocated here, so there is no balance to report —
+                  // showing a negative one would read as an error.
+                  <span className="text-[11px] text-faint tnum">
+                    已花 {money(r.spent, sym)}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* filters */}

@@ -1,8 +1,16 @@
 import { useState } from 'react'
-import type { Account, AccountKind } from '../lib/types'
-import { ACCOUNT_KINDS, KIND_EMOJI, KIND_HINT, KIND_LABEL, PALETTE } from '../lib/defaults'
+import type { Account, AccountKind, Wallet } from '../lib/types'
+import {
+  ACCOUNT_KINDS,
+  KIND_EMOJI,
+  KIND_HINT,
+  KIND_LABEL,
+  PALETTE,
+  WALLET_KIND_LABEL,
+} from '../lib/defaults'
 import { Sheet } from './Sheet'
-import { EmojiPicker, ColorPicker } from './pickers'
+import { EmojiField } from './EmojiField'
+import { ColorPicker } from './pickers'
 import { IconTrash } from './icons'
 
 /**
@@ -14,6 +22,7 @@ export function AccountEditor({
   onClose,
   onSave,
   onDelete,
+  wallets,
   /** How many items already exist — used to give a new one an unused-looking colour. */
   seed = 0,
 }: {
@@ -21,6 +30,7 @@ export function AccountEditor({
   onClose: () => void
   onSave: (v: Omit<Account, 'id' | 'order'>) => void
   onDelete?: () => void
+  wallets: Wallet[]
   seed?: number
 }) {
   const isNew = target === 'new'
@@ -33,8 +43,11 @@ export function AccountEditor({
   const [emoji, setEmoji] = useState(KIND_EMOJI.saving)
   const [color, setColor] = useState(defaultColor)
   const [kind, setKind] = useState<AccountKind>('saving')
+  const [walletId, setWalletId] = useState<string | null>(null)
   const [emojiPicked, setEmojiPicked] = useState(false)
   const [key, setKey] = useState('')
+
+  const defaultWallet = wallets.find((w) => w.kind === 'bank')?.id ?? wallets[0]?.id ?? null
 
   // Re-seed the form whenever a different item is opened.
   const targetKey = a?.id ?? (isNew ? `new-${seed}` : '')
@@ -44,6 +57,7 @@ export function AccountEditor({
     setEmoji(a?.emoji ?? KIND_EMOJI[a?.kind ?? 'saving'])
     setColor(a?.color ?? defaultColor)
     setKind(a?.kind ?? 'saving')
+    setWalletId(a ? a.walletId : defaultWallet)
     setEmojiPicked(!isNew)
   }
 
@@ -75,7 +89,7 @@ export function AccountEditor({
             </button>
           )}
           <button
-            onClick={() => name.trim() && onSave({ name: name.trim(), emoji, color, kind })}
+            onClick={() => name.trim() && onSave({ name: name.trim(), emoji, color, kind, walletId })}
             disabled={!name.trim()}
             className="flex-1 h-12 rounded-2xl bg-brand text-white font-semibold disabled:opacity-40 active:scale-[0.98] transition"
           >
@@ -86,12 +100,7 @@ export function AccountEditor({
     >
       <div className="space-y-4 pb-2">
         <div className="flex items-center gap-3">
-          <span
-            className="w-14 h-14 shrink-0 grid place-items-center rounded-2xl text-2xl"
-            style={{ background: `${color}22` }}
-          >
-            {emoji}
-          </span>
+          <EmojiField value={emoji} color={color} onChange={chooseEmoji} />
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -128,7 +137,48 @@ export function AccountEditor({
           </div>
         </div>
 
-        <EmojiPicker value={emoji} onChange={chooseEmoji} />
+        <div>
+          <div className="text-sm text-muted mb-2">
+            這筆錢放在哪裡？
+            <span className="block text-[11px] text-faint">
+              轉帳時要轉進哪個戶頭，或直接留成現金
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {wallets.map((w) => (
+              <button
+                key={w.id}
+                onClick={() => setWalletId(w.id)}
+                className={`flex items-center gap-2 p-2.5 rounded-2xl text-left transition ${
+                  walletId === w.id ? 'bg-brand-soft ring-2 ring-brand' : 'bg-surface2'
+                }`}
+              >
+                <span
+                  className="w-8 h-8 shrink-0 grid place-items-center rounded-full text-base"
+                  style={{ background: `${w.color}22` }}
+                >
+                  {w.emoji}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm truncate">{w.name}</span>
+                  <span className="block text-[10px] text-muted">{WALLET_KIND_LABEL[w.kind]}</span>
+                </span>
+              </button>
+            ))}
+            <button
+              onClick={() => setWalletId(null)}
+              className={`flex items-center gap-2 p-2.5 rounded-2xl text-left transition ${
+                walletId === null ? 'bg-brand-soft ring-2 ring-brand' : 'bg-surface2'
+              }`}
+            >
+              <span className="w-8 h-8 shrink-0 grid place-items-center rounded-full text-base bg-surface">
+                ❓
+              </span>
+              <span className="text-sm">不指定</span>
+            </button>
+          </div>
+        </div>
+
         <ColorPicker value={color} onChange={setColor} />
       </div>
     </Sheet>

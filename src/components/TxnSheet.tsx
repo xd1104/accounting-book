@@ -5,7 +5,7 @@ import { Sheet } from './Sheet'
 import { NumberPad, evalExpr, hasOperator } from './NumberPad'
 import { IconCamera, IconTrash } from './icons'
 import { money } from '../lib/format'
-import { periodOf, today } from '../lib/date'
+import { addDays, periodOf, today } from '../lib/date'
 import { getPlan } from '../lib/budget'
 import { uid } from '../lib/defaults'
 import { compressImage, deletePhotos, putPhoto } from '../lib/photos'
@@ -28,6 +28,7 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
   const [categoryId, setCategoryId] = useState('')
   const [accountId, setAccountId] = useState<string | null>(null)
   const [date, setDate] = useState(today())
+  const [walletId, setWalletId] = useState<string | null>(null)
   const [note, setNote] = useState('')
   const [photos, setPhotos] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
@@ -45,13 +46,26 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
     () => data.accounts.filter((a) => !a.archived).sort((a, b) => a.order - b.order),
     [data.accounts],
   )
+  const wallets = useMemo(
+    () => data.wallets.filter((w) => !w.archived).sort((a, b) => a.order - b.order),
+    [data.wallets],
+  )
 
-  // Default the account to whichever one the current plan spends from.
+  // Default the allocation item to whichever one the current plan spends from.
   const defaultAccountId = useMemo(() => {
     const plan = getPlan(data, periodOf(today(), data.settings.monthStartDay))
     if (plan?.allowanceAccountId) return plan.allowanceAccountId
     return accounts.find((a) => a.kind === 'allowance')?.id ?? accounts[0]?.id ?? null
   }, [data, accounts])
+
+  /** Cash or card is a habit — reuse whatever was picked last. */
+  const defaultWalletId = useMemo(() => {
+    const recent = [...data.txns]
+      .filter((t) => t.type === 'expense' && t.walletId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
+    if (recent?.walletId && wallets.some((w) => w.id === recent.walletId)) return recent.walletId
+    return wallets[0]?.id ?? null
+  }, [data.txns, wallets])
 
   /** The category used most recently for this type — saves a tap on the common case. */
   const lastUsedCategory = (t: TxnType) => {
@@ -72,6 +86,7 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
       setCategoryId(editing.categoryId)
       setAccountId(editing.accountId)
       setDate(editing.date)
+      setWalletId(editing.walletId)
       setNote(editing.note)
       setPhotos(editing.photos ?? [])
     } else {
@@ -80,6 +95,7 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
       setCategoryId(lastUsedCategory('expense'))
       setAccountId(defaultAccountId)
       setDate(defaultDate ?? today())
+      setWalletId(defaultWalletId)
       setNote('')
       setPhotos([])
     }
@@ -123,7 +139,7 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
     const dropped = (editing?.photos ?? []).filter((id) => !photos.includes(id))
     if (dropped.length) deletePhotos(dropped)
 
-    const payload = { type, amount, categoryId, accountId, note: note.trim(), date, photos }
+    const payload = { type, amount, categoryId, accountId, walletId, note: note.trim(), date, photos }
     if (editing) updateTxn(editing.id, payload)
     else addTxn(payload)
     onClose()
@@ -189,7 +205,33 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
         )}
       </div>
 
-      {/* amount */}
+      {/* 1. date — first, the way the form is filled in */}
+      <div className="flex gap-2 mt-2">
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          className="flex-1 min-w-0 h-10 px-3 rounded-xl bg-surface2 text-ink text-sm outline-none"
+        />
+        <div className="flex gap-1">
+          {[
+            ['今天', today()],
+            ['昨天', addDays(today(), -1)],
+          ].map(([label, d]) => (
+            <button
+              key={label}
+              onClick={() => setDate(d)}
+              className={`px-3 h-10 rounded-xl text-xs font-medium transition ${
+                date === d ? 'bg-brand text-white' : 'bg-surface2 text-muted'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 2. amount */}
       <div className="pt-3 pb-2 text-right">
         <div
           className={`text-5xl font-semibold tnum leading-none ${
@@ -207,7 +249,7 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
         </div>
       </div>
 
-      {/* categories — capped at two visible rows so the fields below stay reachable */}
+      {/* 3. category — capped at two visible rows so the fields below stay reachable */}
       <div className="grid grid-cols-5 gap-1.5 max-h-[172px] overflow-y-auto">
         {categories.map((c) => {
           const on = c.id === categoryId
@@ -235,8 +277,46 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
         })}
       </div>
 
-      {/* detail, photos, date, account */}
-      <div className="mt-4 space-y-2">
+      {/* 4. where the money came from */}
+      <div className="mt-3">
+        <div className="text-[11px] text-muted mb-1.5">
+          {type === 'expense' ? '從哪裡付？' : '收到哪裡？'}
+        </div>
+        <div className="flex gap-1.5 overflow-x-auto pb-1">
+          {wallets.map((w) => (
+            <button
+              key={w.id}
+              onClick={() => setWalletId(w.id)}
+              className={`shrink-0 flex items-center gap-1.5 pl-1.5 pr-3 h-10 rounded-xl transition active:scale-95 ${
+                walletId === w.id ? 'bg-brand-soft ring-2 ring-brand' : 'bg-surface2'
+              }`}
+            >
+              <span
+                className="w-7 h-7 grid place-items-center rounded-full text-sm"
+                style={{ background: `${w.color}22` }}
+              >
+                {w.emoji}
+              </span>
+              <span
+                className={`text-xs ${walletId === w.id ? 'font-semibold text-brand' : 'text-muted'}`}
+              >
+                {w.name}
+              </span>
+            </button>
+          ))}
+          <button
+            onClick={() => setWalletId(null)}
+            className={`shrink-0 px-3 h-10 rounded-xl text-xs transition ${
+              walletId === null ? 'bg-brand-soft ring-2 ring-brand text-brand font-semibold' : 'bg-surface2 text-muted'
+            }`}
+          >
+            不指定
+          </button>
+        </div>
+      </div>
+
+      {/* 5. detail and photos */}
+      <div className="mt-2 space-y-2">
         <div className="flex gap-2">
           <textarea
             value={note}
@@ -290,26 +370,18 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
           }}
         />
 
-        <div className="flex gap-2">
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="flex-1 h-11 px-3 rounded-xl bg-surface2 text-ink text-sm outline-none"
-          />
-          <select
-            value={accountId ?? ''}
-            onChange={(e) => setAccountId(e.target.value || null)}
-            className="flex-1 h-11 px-3 rounded-xl bg-surface2 text-ink text-sm outline-none"
-          >
-            <option value="">未指定帳戶</option>
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.emoji} {a.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        <select
+          value={accountId ?? ''}
+          onChange={(e) => setAccountId(e.target.value || null)}
+          className="w-full h-10 px-3 rounded-xl bg-surface2 text-muted text-xs outline-none"
+        >
+          <option value="">算在哪個分配項目：未指定</option>
+          {accounts.map((a) => (
+            <option key={a.id} value={a.id}>
+              算在：{a.emoji} {a.name}
+            </option>
+          ))}
+        </select>
       </div>
 
       <PhotoViewer id={viewing} onClose={() => setViewing(null)} />

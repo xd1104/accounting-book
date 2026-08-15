@@ -1,5 +1,10 @@
-import type { Account, AccountKind, AppData, Category, Settings } from './types'
+import type { Account, AccountKind, AppData, Category, Settings, Wallet, WalletKind } from './types'
 import { DATA_VERSION } from './types'
+
+export const WALLET_KIND_LABEL: Record<WalletKind, string> = {
+  cash: '現金',
+  bank: '戶頭',
+}
 
 /** Display order of the allocation types, used by the pickers and the grouped list. */
 export const ACCOUNT_KINDS: AccountKind[] = ['allowance', 'fixed', 'saving', 'invest', 'other']
@@ -66,7 +71,23 @@ export function defaultCategories(): Category[] {
   return out
 }
 
-export function defaultAccounts(): Account[] {
+export function defaultWallets(): Wallet[] {
+  const defs: Array<[string, string, string, WalletKind]> = [
+    ['錢包現金', '💵', '#22c55e', 'cash'],
+    ['主要戶頭', '🏦', '#3b82f6', 'bank'],
+  ]
+  return defs.map(([name, emoji, color, kind], i) => ({
+    id: uid(),
+    name,
+    emoji,
+    color,
+    kind,
+    order: i,
+  }))
+}
+
+export function defaultAccounts(wallets: Wallet[]): Account[] {
+  const bank = wallets.find((w) => w.kind === 'bank')?.id ?? null
   const defs: Array<[string, string, string, Account['kind']]> = [
     ['生活費', '💳', '#6366f1', 'allowance'],
     ['房租', '🏠', '#a16207', 'fixed'],
@@ -80,15 +101,18 @@ export function defaultAccounts(): Account[] {
     emoji,
     color,
     kind,
+    walletId: bank,
     order: i,
   }))
 }
 
 export function emptyData(): AppData {
+  const wallets = defaultWallets()
   return {
     version: DATA_VERSION,
     categories: defaultCategories(),
-    accounts: defaultAccounts(),
+    wallets,
+    accounts: defaultAccounts(wallets),
     plans: {},
     txns: [],
     settings: { ...DEFAULT_SETTINGS },
@@ -96,12 +120,6 @@ export function emptyData(): AppData {
   }
 }
 
-export const CATEGORY_EMOJIS = [
-  '🍜', '🍱', '☕', '🍺', '🛒', '🚌', '🚗', '⛽', '🚕', '✈️',
-  '🛍️', '👕', '👟', '💄', '🎮', '🎬', '🎵', '🏀', '📚', '✏️',
-  '🧻', '🧼', '💊', '🏥', '💇', '📱', '💻', '🏠', '💡', '💧',
-  '🎁', '❤️', '🐶', '🐱', '✨', '💰', '🎉', '📈', '💼', '🏦',
-]
 
 /** Starting icon for a new allocation item, chosen by its type until the user picks one. */
 export const KIND_EMOJI: Record<AccountKind, string> = {

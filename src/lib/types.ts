@@ -13,22 +13,46 @@ export interface Category {
   archived?: boolean
 }
 
+/** 錢實際放在哪：錢包現金，或某個銀行戶頭 */
+export type WalletKind = 'cash' | 'bank'
+
+export interface Wallet {
+  id: string
+  name: string
+  emoji: string
+  color: string
+  kind: WalletKind
+  order: number
+  archived?: boolean
+}
+
+/** 分配項目 = 錢的用途（房貸、生活費、旅遊基金） */
 export interface Account {
   id: string
   name: string
   emoji: string
   color: string
   kind: AccountKind
+  /** 這個項目的錢平常放在哪個存放處 */
+  walletId: string | null
   order: number
   archived?: boolean
 }
 
-/** 這個月薪水撥給某個帳戶的一筆錢，done = 已經實際轉過去了 */
+/** 一筆分配拆到多個存放處，例如零用錢一半現金一半在戶頭 */
+export interface AllocationSplit {
+  walletId: string
+  amount: number
+}
+
+/** 這個月薪水撥給某個項目的一筆錢，done = 已經實際轉過去了 */
 export interface Allocation {
   accountId: string
   amount: number
   done: boolean
   doneAt?: string
+  /** 有值時取代 amount 的單一存放處，用來拆成現金／戶頭 */
+  splits?: AllocationSplit[]
 }
 
 export interface MonthPlan {
@@ -48,8 +72,10 @@ export interface Txn {
   type: TxnType
   amount: number
   categoryId: string
-  /** 這筆錢從哪個帳戶出。只有從零用錢帳戶出的才會扣每日額度 */
+  /** 這筆錢算在哪個分配項目上。只有零用錢項目才會扣每日額度 */
   accountId: string | null
+  /** 實際從哪裡付的：錢包現金或某個戶頭 */
+  walletId: string | null
   /** 說明：吃了什麼、買了什麼，可多行 */
   note: string
   /** 照片 id，實際影像存在 IndexedDB（localStorage 塞不下） */
@@ -68,6 +94,7 @@ export interface Settings {
 export interface AppData {
   version: number
   categories: Category[]
+  wallets: Wallet[]
   accounts: Account[]
   /** key = 'YYYY-MM' */
   plans: Record<string, MonthPlan>
@@ -76,4 +103,4 @@ export interface AppData {
   updatedAt: string
 }
 
-export const DATA_VERSION = 1
+export const DATA_VERSION = 2

@@ -31,21 +31,29 @@ export function Accounts() {
           <div className="text-xs text-muted px-4 pb-1.5">{KIND_LABEL[g.kind]}</div>
           <div className="bg-surface rounded-3xl p-2">
             <div className="divide-y divide-line">
-              {g.items.map((a) => (
-                <button
-                  key={a.id}
-                  onClick={() => setEditing(a)}
-                  className="w-full flex items-center gap-3 p-3 text-left active:bg-surface2 rounded-2xl"
-                >
-                  <span
-                    className="w-10 h-10 grid place-items-center rounded-full text-lg"
-                    style={{ background: `${a.color}22` }}
+              {g.items.map((a) => {
+                const w = data.wallets.find((x) => x.id === a.walletId)
+                return (
+                  <button
+                    key={a.id}
+                    onClick={() => setEditing(a)}
+                    className="w-full flex items-center gap-3 p-3 text-left active:bg-surface2 rounded-2xl"
                   >
-                    {a.emoji}
-                  </span>
-                  <span className="flex-1 font-medium">{a.name}</span>
-                </button>
-              ))}
+                    <span
+                      className="w-10 h-10 grid place-items-center rounded-full text-lg"
+                      style={{ background: `${a.color}22` }}
+                    >
+                      {a.emoji}
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block font-medium truncate">{a.name}</span>
+                      <span className="block text-xs text-muted truncate">
+                        {w ? `${w.emoji} ${w.name}` : '未指定存放處'}
+                      </span>
+                    </span>
+                  </button>
+                )
+              })}
             </div>
           </div>
         </div>
@@ -61,6 +69,7 @@ export function Accounts() {
       <AccountEditor
         target={editing}
         seed={data.accounts.length}
+        wallets={data.wallets.filter((w) => !w.archived)}
         onClose={() => setEditing(null)}
         onSave={(v) => {
           if (editing === 'new') addAccount(v)

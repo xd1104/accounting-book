@@ -3,8 +3,9 @@ import { useStore } from '../store'
 import { emptyPlan, resolvePlan, summarize } from '../lib/budget'
 import { addMonths, currentPeriod, formatMonthLabel, periodRange } from '../lib/date'
 import { money } from '../lib/format'
-import { ACCOUNT_KINDS, KIND_LABEL } from '../lib/defaults'
-import type { Account, Allocation, MonthPlan } from '../lib/types'
+import { ACCOUNT_KINDS, KIND_LABEL, WALLET_KIND_LABEL } from '../lib/defaults'
+import type { Account, Allocation, AllocationSplit, MonthPlan } from '../lib/types'
+import { allowanceByWallet } from '../lib/budget'
 import { IconCheck, IconChevronL, IconChevronR, IconPlus, IconTrash } from '../components/icons'
 import { Sheet } from '../components/Sheet'
 import { Toggle } from '../components/Toggle'
@@ -57,7 +58,51 @@ export function Plan() {
     })
   }
 
+  const wallets = useMemo(
+    () => data.wallets.filter((w) => !w.archived).sort((a, b) => a.order - b.order),
+    [data.wallets],
+  )
+
   const unused = accounts.filter((a) => !plan?.allocations.some((x) => x.accountId === a.id))
+
+  const allowanceAlloc = plan?.allocations.find((a) => a.accountId === plan.allowanceAccountId)
+  const walletRows = useMemo(() => allowanceByWallet(data, month), [data, month])
+
+  /** Split the allowance across wallets — part cash in the wallet, part in the bank. */
+  const setSplit = (walletId: string, amount: number) => {
+    const b = base()
+    const id = b.allowanceAccountId
+    if (!id) return
+    savePlan({
+      ...b,
+      allocations: b.allocations.map((a) => {
+        if (a.accountId !== id) return a
+        const existing: AllocationSplit[] =
+          a.splits ?? (a.amount > 0 ? [{ walletId: homeWalletOf(id), amount: a.amount }] : [])
+        const next = existing.some((s) => s.walletId === walletId)
+          ? existing.map((s) => (s.walletId === walletId ? { ...s, amount } : s))
+          : [...existing, { walletId, amount }]
+        const cleaned = next.filter((s) => s.amount !== 0)
+        const total = cleaned.reduce((n, s) => n + s.amount, 0)
+        // The split is the source of truth once used, so keep the headline in step.
+        return { ...a, splits: cleaned.length ? cleaned : undefined, amount: cleaned.length ? total : a.amount }
+      }),
+    })
+  }
+
+  const clearSplits = () => {
+    const b = base()
+    const id = b.allowanceAccountId
+    if (!id) return
+    savePlan({
+      ...b,
+      allocations: b.allocations.map((a) => (a.accountId === id ? { ...a, splits: undefined } : a)),
+    })
+  }
+
+  function homeWalletOf(accountId: string): string {
+    return accounts.find((a) => a.id === accountId)?.walletId ?? wallets[0]?.id ?? ''
+  }
 
   /**
    * The allowance source having no money allocated this month is an easy trap —
@@ -188,23 +233,41 @@ export function Plan() {
                         >
                           {acc?.emoji ?? '💼'}
                         </span>
-                        <span className={`min-w-0 text-sm truncate ${a.done ? 'text-muted' : ''}`}>
-                          {acc?.name ?? '（項目已刪除）'}
-                          {plan?.allowanceAccountId === a.accountId && (
-                            <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-brand-soft text-brand align-middle">
-                              零用錢
-                            </span>
-                          )}
+                        <span className="min-w-0">
+                          <span className={`block text-sm truncate ${a.done ? 'text-muted' : ''}`}>
+                            {acc?.name ?? '（項目已刪除）'}
+                            {plan?.allowanceAccountId === a.accountId && (
+                              <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-brand-soft text-brand align-middle">
+                                零用錢
+                              </span>
+                            )}
+                          </span>
+                          <span className="block text-[10px] text-faint truncate">
+                            {a.splits?.length
+                              ? a.splits
+                                  .map(
+                                    (s) =>
+                                      wallets.find((w) => w.id === s.walletId)?.name ?? '未指定',
+                                  )
+                                  .join(' + ')
+                              : (wallets.find((w) => w.id === acc?.walletId)?.name ?? '未指定存放處')}
+                          </span>
                         </span>
                       </button>
 
+                      {/* Once split across wallets the total is derived, so editing it
+                          here would just contradict the split below. */}
                       <input
                         type="number"
                         inputMode="numeric"
                         value={a.amount || ''}
                         placeholder="0"
+                        readOnly={!!a.splits?.length}
+                        title={a.splits?.length ? '由下方「零用錢放在哪」的金額加總' : undefined}
                         onChange={(e) => setAllocation(a.accountId, Number(e.target.value) || 0)}
-                        className="w-24 h-9 px-2 text-right rounded-lg bg-surface2 tnum text-sm outline-none"
+                        className={`w-24 h-9 px-2 text-right rounded-lg tnum text-sm outline-none ${
+                          a.splits?.length ? 'bg-transparent text-muted' : 'bg-surface2'
+                        }`}
                       />
                       <button
                         onClick={() => removeAllocation(a.accountId)}
@@ -309,6 +372,79 @@ export function Plan() {
         </div>
       </div>
 
+      {/* where the allowance physically sits */}
+      {plan?.allowanceAccountId && allowanceAlloc && (
+        <div className="bg-surface rounded-3xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="font-semibold text-sm">零用錢放在哪</div>
+            {allowanceAlloc.splits?.length ? (
+              <button onClick={clearSplits} className="text-xs text-muted active:text-bad">
+                取消拆分
+              </button>
+            ) : null}
+          </div>
+          <p className="text-[11px] text-faint -mt-1">
+            一部分放錢包當現金、一部分留在戶頭的話，在這裡填。記帳時選付款來源，就能分開算結餘。
+          </p>
+
+          <div className="space-y-2">
+            {wallets.map((w) => {
+              const split = allowanceAlloc.splits?.find((s) => s.walletId === w.id)
+              const implied =
+                !allowanceAlloc.splits?.length &&
+                (accounts.find((a) => a.id === plan.allowanceAccountId)?.walletId ?? null) === w.id
+                  ? allowanceAlloc.amount
+                  : 0
+              const row = walletRows.find((r) => r.walletId === w.id)
+              return (
+                <div key={w.id} className="flex items-center gap-2">
+                  <span
+                    className="w-8 h-8 shrink-0 grid place-items-center rounded-full text-base"
+                    style={{ background: `${w.color}22` }}
+                  >
+                    {w.emoji}
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm truncate">{w.name}</span>
+                    <span className="block text-[10px] text-faint">
+                      {WALLET_KIND_LABEL[w.kind]}
+                      {row && row.spent > 0 && ` · 已花 ${money(row.spent, sym)}`}
+                    </span>
+                  </span>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={split?.amount ?? implied ?? ''}
+                    placeholder="0"
+                    onChange={(e) => setSplit(w.id, Number(e.target.value) || 0)}
+                    className="w-24 h-9 px-2 text-right rounded-lg bg-surface2 tnum text-sm outline-none"
+                  />
+                </div>
+              )
+            })}
+          </div>
+
+          {walletRows.length > 0 && (
+            <div className="pt-2 border-t border-line space-y-1.5">
+              {walletRows.map((r) => (
+                <div key={r.walletId ?? 'none'} className="flex items-center justify-between text-sm">
+                  <span className="text-muted">
+                    {r.emoji} {r.name} {r.allocated > 0 ? '還剩' : '已花'}
+                  </span>
+                  <span
+                    className={`tnum font-semibold ${
+                      r.allocated > 0 ? (r.left < 0 ? 'text-bad' : '') : 'text-muted'
+                    }`}
+                  >
+                    {money(r.allocated > 0 ? r.left : r.spent, sym)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* pick an existing item, or make a new one */}
       <Sheet open={picking} onClose={() => setPicking(false)} title="加入哪個項目？">
         <div className="pb-4 space-y-1">
@@ -355,6 +491,7 @@ export function Plan() {
       <AccountEditor
         target={editingAccount}
         seed={data.accounts.length}
+        wallets={wallets}
         onClose={() => setEditingAccount(null)}
         onSave={(v) => {
           if (editingAccount === 'new') {

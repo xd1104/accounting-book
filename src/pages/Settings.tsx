@@ -100,7 +100,16 @@ export function Settings() {
       </Group>
 
       <Group title="管理">
-        <NavRow label="帳戶" hint={`${data.accounts.filter((a) => !a.archived).length} 個`} onClick={() => push('/accounts')} />
+        <NavRow
+          label="存放處"
+          hint={`${data.wallets.filter((w) => !w.archived).length} 個`}
+          onClick={() => push('/wallets')}
+        />
+        <NavRow
+          label="分配項目"
+          hint={`${data.accounts.filter((a) => !a.archived).length} 個`}
+          onClick={() => push('/accounts')}
+        />
         <NavRow
           label="分類"
           hint={`${data.categories.filter((c) => !c.archived).length} 個`}

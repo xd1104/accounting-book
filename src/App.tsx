@@ -7,6 +7,7 @@ import { Settings } from './pages/Settings'
 import { Plan } from './pages/Plan'
 import { Accounts } from './pages/Accounts'
 import { Categories } from './pages/Categories'
+import { Wallets } from './pages/Wallets'
 import { TxnSheet } from './components/TxnSheet'
 import { IconBack, IconChart, IconGear, IconHome, IconList, IconPlus } from './components/icons'
 
@@ -19,7 +20,8 @@ const TABS = [
 
 const SUB_PAGES: Record<string, string> = {
   '/plan': '薪水分配',
-  '/accounts': '帳戶',
+  '/accounts': '分配項目',
+  '/wallets': '存放處',
   '/categories': '分類',
 }
 
@@ -68,6 +70,7 @@ export function App() {
         {base === '/settings' && <Settings />}
         {base === '/plan' && <Plan />}
         {base === '/accounts' && <Accounts />}
+        {base === '/wallets' && <Wallets />}
         {base === '/categories' && <Categories />}
       </main>
 

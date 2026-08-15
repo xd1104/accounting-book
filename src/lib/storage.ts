@@ -1,6 +1,6 @@
 import type { AppData } from './types'
 import { DATA_VERSION } from './types'
-import { DEFAULT_SETTINGS, emptyData } from './defaults'
+import { DEFAULT_SETTINGS, defaultAccounts, defaultWallets, emptyData } from './defaults'
 import { blobToDataURL, dataURLToBlob, getPhoto, putPhoto } from './photos'
 
 /**
@@ -35,18 +35,35 @@ export class LocalStorageAdapter implements StorageAdapter {
   }
 }
 
-/** Fill in anything a older/hand-edited payload is missing so the app never crashes on load. */
+/** Fill in anything an older or hand-edited payload is missing so the app never crashes on load. */
 export function migrate(raw: unknown): AppData {
   const base = emptyData()
   if (!raw || typeof raw !== 'object') return base
   const d = raw as Partial<AppData>
 
+  // v1 had no wallets: everything lived in one undifferentiated pot. Seed the
+  // defaults and point existing allocation items at the bank one, which is what
+  // they effectively were.
+  const wallets =
+    Array.isArray(d.wallets) && d.wallets.length ? d.wallets : defaultWallets()
+  const fallbackWallet = wallets.find((w) => w.kind === 'bank')?.id ?? wallets[0]?.id ?? null
+
+  const accounts =
+    Array.isArray(d.accounts) && d.accounts.length
+      ? d.accounts.map((a) => ({ ...a, walletId: a.walletId ?? fallbackWallet }))
+      : defaultAccounts(wallets)
+
+  // Existing transactions keep walletId null — "unspecified" is honest here,
+  // guessing would invent a cash/bank split that was never recorded.
+  const txns = Array.isArray(d.txns) ? d.txns.map((t) => ({ ...t, walletId: t.walletId ?? null })) : []
+
   return {
     version: DATA_VERSION,
     categories: Array.isArray(d.categories) && d.categories.length ? d.categories : base.categories,
-    accounts: Array.isArray(d.accounts) && d.accounts.length ? d.accounts : base.accounts,
+    wallets,
+    accounts,
     plans: d.plans && typeof d.plans === 'object' ? d.plans : {},
-    txns: Array.isArray(d.txns) ? d.txns : [],
+    txns,
     settings: { ...DEFAULT_SETTINGS, ...(d.settings ?? {}) },
     updatedAt: typeof d.updatedAt === 'string' ? d.updatedAt : new Date().toISOString(),
   }

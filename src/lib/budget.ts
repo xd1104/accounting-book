@@ -192,6 +192,73 @@ export function summarize(data: AppData, month: string, now = today()): PeriodSu
   }
 }
 
+export interface WalletBalance {
+  walletId: string | null
+  name: string
+  emoji: string
+  color: string
+  kind: 'cash' | 'bank' | 'unset'
+  /** 這個月配到這裡的零用錢 */
+  allocated: number
+  /** 從這裡花掉的零用錢 */
+  spent: number
+  left: number
+}
+
+/**
+ * Split the allowance across where the money physically sits, so "how much cash
+ * is left in my wallet" and "how much is left in the bank" are separate answers.
+ */
+export function allowanceByWallet(data: AppData, month: string): WalletBalance[] {
+  const plan = getPlan(data, month)
+  const allowanceId = plan?.allowanceAccountId ?? null
+
+  const allocated = new Map<string | null, number>()
+  const alloc = plan?.allocations.find((a) => a.accountId === allowanceId)
+  if (alloc) {
+    if (alloc.splits?.length) {
+      for (const s of alloc.splits) {
+        allocated.set(s.walletId, (allocated.get(s.walletId) ?? 0) + s.amount)
+      }
+    } else {
+      const home = data.accounts.find((a) => a.id === allowanceId)?.walletId ?? null
+      allocated.set(home, alloc.amount)
+    }
+  }
+
+  const spent = new Map<string | null, number>()
+  for (const t of txnsInPeriod(data, month)) {
+    if (!drawsAllowance(t, allowanceId)) continue
+    spent.set(t.walletId, (spent.get(t.walletId) ?? 0) + t.amount)
+  }
+
+  const ids = new Set<string | null>([...allocated.keys(), ...spent.keys()])
+  const out: WalletBalance[] = []
+  for (const id of ids) {
+    const w = id ? data.wallets.find((x) => x.id === id) : null
+    const a = allocated.get(id) ?? 0
+    const s = spent.get(id) ?? 0
+    if (a === 0 && s === 0) continue
+    out.push({
+      walletId: id,
+      name: w?.name ?? '未指定',
+      emoji: w?.emoji ?? '❓',
+      color: w?.color ?? '#6b7280',
+      kind: w?.kind ?? 'unset',
+      allocated: a,
+      spent: s,
+      left: a - s,
+    })
+  }
+
+  // Wallet order first, unspecified last.
+  return out.sort((x, y) => {
+    const ox = data.wallets.findIndex((w) => w.id === x.walletId)
+    const oy = data.wallets.findIndex((w) => w.id === y.walletId)
+    return (ox < 0 ? 99 : ox) - (oy < 0 ? 99 : oy)
+  })
+}
+
 export interface CategoryTotal {
   categoryId: string
   name: string
