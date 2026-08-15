@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useStore } from '../store'
 import type { Theme } from '../store'
-import { downloadBackup, migrate } from '../lib/storage'
+import { downloadBackup, migrate, restorePhotos } from '../lib/storage'
+import { storageEstimate } from '../lib/photos'
 import { push } from '../router'
 import { IconChevronR } from '../components/icons'
 import { Toggle } from './Plan'
@@ -10,17 +11,42 @@ export function Settings() {
   const { data, updateSettings, replaceAll, resetAll, theme, setTheme } = useStore()
   const fileRef = useRef<HTMLInputElement>(null)
   const [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [usage, setUsage] = useState<{ usedMB: number; quotaMB: number } | null>(null)
+
+  useEffect(() => {
+    storageEstimate().then(setUsage)
+  }, [data])
+
+  const photoCount = data.txns.reduce((n, t) => n + (t.photos?.length ?? 0), 0)
+
+  const doExport = async () => {
+    setBusy(true)
+    setMsg('')
+    try {
+      await downloadBackup(data)
+      setMsg(photoCount > 0 ? `已匯出（含 ${photoCount} 張照片，檔案會比較大）` : '已匯出')
+    } catch {
+      setMsg('匯出失敗')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const doImport = async (file: File) => {
+    setBusy(true)
     try {
       const parsed = JSON.parse(await file.text())
       const next = migrate(parsed)
       const n = next.txns.length
       if (!confirm(`匯入 ${n} 筆記錄？這會覆蓋目前這台裝置上的所有資料。`)) return
+      const restored = await restorePhotos(parsed)
       replaceAll(next)
-      setMsg(`已匯入 ${n} 筆記錄`)
+      setMsg(`已匯入 ${n} 筆記錄${restored ? `、${restored} 張照片` : ''}`)
     } catch {
       setMsg('檔案讀不到或格式不對')
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -85,22 +111,34 @@ export function Settings() {
 
       <Group title="資料備份">
         <div className="px-4 pb-3 text-xs text-muted">
-          資料目前存在這台裝置的瀏覽器裡，換手機或清除瀏覽器資料就會不見。
-          要搬到別台裝置，就先「匯出備份」再到另一台「匯入備份」。
+          資料和照片都存在這台裝置的瀏覽器裡，換手機或清除瀏覽器資料就會不見。
+          要搬到別台裝置，就先「匯出備份」再到另一台「匯入備份」— 備份檔含照片。
         </div>
         <Row label="記錄筆數">
-          <span className="text-sm tnum text-muted">{data.txns.length} 筆</span>
+          <span className="text-sm tnum text-muted">
+            {data.txns.length} 筆{photoCount > 0 && ` · ${photoCount} 張照片`}
+          </span>
         </Row>
+        {usage && (
+          <Row
+            label="已用空間"
+            hint={usage.quotaMB > 0 ? `可用約 ${Math.round(usage.quotaMB)} MB` : undefined}
+          >
+            <span className="text-sm tnum text-muted">{usage.usedMB.toFixed(1)} MB</span>
+          </Row>
+        )}
         <div className="px-3 pb-3 grid grid-cols-2 gap-2">
           <button
-            onClick={() => downloadBackup(data)}
-            className="h-11 rounded-2xl bg-brand text-white text-sm font-semibold active:scale-[0.98] transition"
+            onClick={doExport}
+            disabled={busy}
+            className="h-11 rounded-2xl bg-brand text-white text-sm font-semibold active:scale-[0.98] transition disabled:opacity-50"
           >
-            匯出備份
+            {busy ? '處理中…' : '匯出備份'}
           </button>
           <button
             onClick={() => fileRef.current?.click()}
-            className="h-11 rounded-2xl bg-surface2 text-ink text-sm font-semibold active:scale-[0.98] transition"
+            disabled={busy}
+            className="h-11 rounded-2xl bg-surface2 text-ink text-sm font-semibold active:scale-[0.98] transition disabled:opacity-50"
           >
             匯入備份
           </button>

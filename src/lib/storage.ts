@@ -1,6 +1,7 @@
 import type { AppData } from './types'
 import { DATA_VERSION } from './types'
 import { DEFAULT_SETTINGS, emptyData } from './defaults'
+import { blobToDataURL, dataURLToBlob, getPhoto, putPhoto } from './photos'
 
 /**
  * Everything above this layer only knows about StorageAdapter, so a cloud backend
@@ -51,13 +52,25 @@ export function migrate(raw: unknown): AppData {
   }
 }
 
-export function exportJSON(data: AppData): string {
-  return JSON.stringify(data, null, 2)
+/** A backup carries the photos too — without them it would silently lose data. */
+export interface Backup extends AppData {
+  photoData?: Record<string, string>
 }
 
-export function downloadBackup(data: AppData): void {
+export async function buildBackup(data: AppData): Promise<Backup> {
+  const ids = [...new Set(data.txns.flatMap((t) => t.photos ?? []))]
+  const photoData: Record<string, string> = {}
+  for (const id of ids) {
+    const blob = await getPhoto(id)
+    if (blob) photoData[id] = await blobToDataURL(blob)
+  }
+  return { ...data, photoData }
+}
+
+export async function downloadBackup(data: AppData): Promise<void> {
+  const backup = await buildBackup(data)
   const stamp = new Date().toISOString().slice(0, 10)
-  const blob = new Blob([exportJSON(data)], { type: 'application/json' })
+  const blob = new Blob([JSON.stringify(backup)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
@@ -66,4 +79,20 @@ export function downloadBackup(data: AppData): void {
   a.click()
   a.remove()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+/** Restore photos from a backup into IndexedDB. Returns how many were written. */
+export async function restorePhotos(raw: unknown): Promise<number> {
+  const photoData = (raw as Backup | null)?.photoData
+  if (!photoData) return 0
+  let n = 0
+  for (const [id, dataURL] of Object.entries(photoData)) {
+    try {
+      await putPhoto(id, await dataURLToBlob(dataURL))
+      n++
+    } catch {
+      // A single unreadable photo shouldn't abort the whole restore.
+    }
+  }
+  return n
 }

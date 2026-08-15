@@ -13,7 +13,37 @@ export function emptyPlan(month: string, allowanceAccountId: string | null): Mon
 }
 
 export function getPlan(data: AppData, month: string): MonthPlan | null {
-  return data.plans[month] ?? null
+  return resolvePlan(data, month).plan
+}
+
+/**
+ * A month with no plan of its own inherits the most recent earlier one, with the
+ * transferred ticks cleared — set the split up once and every later month keeps it.
+ * `carried` marks a plan that is only inherited; the first edit writes it for real.
+ */
+export function resolvePlan(
+  data: AppData,
+  month: string,
+): { plan: MonthPlan | null; carried: boolean; from: string | null } {
+  const stored = data.plans[month]
+  if (stored) return { plan: stored, carried: false, from: null }
+
+  const earlier = Object.keys(data.plans)
+    .filter((m) => m < month)
+    .sort()
+  const fromMonth = earlier.at(-1)
+  if (!fromMonth) return { plan: null, carried: false, from: null }
+
+  const prev = data.plans[fromMonth]
+  return {
+    plan: {
+      ...prev,
+      month,
+      allocations: prev.allocations.map((a) => ({ ...a, done: false, doneAt: undefined })),
+    },
+    carried: true,
+    from: fromMonth,
+  }
 }
 
 /** Transactions belonging to a budget period, newest first. */

@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store'
 import type { TxnType } from '../lib/types'
 import { Sheet } from './Sheet'
 import { NumberPad, evalExpr, hasOperator } from './NumberPad'
-import { IconTrash } from './icons'
+import { IconCamera, IconTrash } from './icons'
 import { money } from '../lib/format'
 import { periodOf, today } from '../lib/date'
 import { getPlan } from '../lib/budget'
+import { uid } from '../lib/defaults'
+import { compressImage, deletePhotos, putPhoto } from '../lib/photos'
+import { PhotoThumb, PhotoViewer } from './Photo'
 
 interface Props {
   open: boolean
@@ -26,6 +29,13 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
   const [accountId, setAccountId] = useState<string | null>(null)
   const [date, setDate] = useState(today())
   const [note, setNote] = useState('')
+  const [photos, setPhotos] = useState<string[]>([])
+  const [busy, setBusy] = useState(false)
+  const [viewing, setViewing] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+  /** Photos written to IndexedDB during this session, dropped again if the sheet is cancelled. */
+  const addedRef = useRef<string[]>([])
+  const savedRef = useRef(false)
 
   const categories = useMemo(
     () => data.categories.filter((c) => c.type === type && !c.archived).sort((a, b) => a.order - b.order),
@@ -63,6 +73,7 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
       setAccountId(editing.accountId)
       setDate(editing.date)
       setNote(editing.note)
+      setPhotos(editing.photos ?? [])
     } else {
       setType('expense')
       setExpr('')
@@ -70,7 +81,10 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
       setAccountId(defaultAccountId)
       setDate(defaultDate ?? today())
       setNote('')
+      setPhotos([])
     }
+    addedRef.current = []
+    savedRef.current = false
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editId])
 
@@ -79,31 +93,65 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
     setCategoryId(lastUsedCategory(t))
   }
 
+  const attach = async (files: FileList) => {
+    setBusy(true)
+    try {
+      const ids: string[] = []
+      for (const file of Array.from(files).slice(0, 6)) {
+        if (!file.type.startsWith('image/')) continue
+        const blob = await compressImage(file)
+        const id = uid()
+        await putPhoto(id, blob)
+        addedRef.current.push(id)
+        ids.push(id)
+      }
+      setPhotos((p) => [...p, ...ids])
+    } catch {
+      alert('照片存不進去，可能是儲存空間滿了')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const amount = evalExpr(expr)
   const valid = amount > 0 && !!categoryId
 
   const submit = () => {
     if (!valid) return
-    const payload = { type, amount, categoryId, accountId, note: note.trim(), date }
+    savedRef.current = true
+    // Photos taken off an existing record are only really deleted once we save.
+    const dropped = (editing?.photos ?? []).filter((id) => !photos.includes(id))
+    if (dropped.length) deletePhotos(dropped)
+
+    const payload = { type, amount, categoryId, accountId, note: note.trim(), date, photos }
     if (editing) updateTxn(editing.id, payload)
     else addTxn(payload)
+    onClose()
+  }
+
+  /** Cancelling should not leave photos behind in IndexedDB. */
+  const cancel = () => {
+    if (!savedRef.current && addedRef.current.length) deletePhotos(addedRef.current)
+    addedRef.current = []
     onClose()
   }
 
   const remove = () => {
     if (!editing) return
     if (confirm('刪除這筆記錄？')) {
+      savedRef.current = true
       deleteTxn(editing.id)
       onClose()
     }
   }
 
   const sym = data.settings.currencySymbol
+  const selectedCategory = categories.find((c) => c.id === categoryId)
 
   return (
     <Sheet
       open={open}
-      onClose={onClose}
+      onClose={cancel}
       full
       footer={
         <NumberPad
@@ -159,8 +207,8 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
         </div>
       </div>
 
-      {/* categories */}
-      <div className="grid grid-cols-5 gap-1.5">
+      {/* categories — capped at two visible rows so the fields below stay reachable */}
+      <div className="grid grid-cols-5 gap-1.5 max-h-[172px] overflow-y-auto">
         {categories.map((c) => {
           const on = c.id === categoryId
           return (
@@ -187,8 +235,61 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
         })}
       </div>
 
-      {/* date / account / note */}
+      {/* detail, photos, date, account */}
       <div className="mt-4 space-y-2">
+        <div className="flex gap-2">
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+            placeholder={
+              selectedCategory
+                ? `${selectedCategory.name}吃了/買了什麼？（選填）`
+                : '詳細說明（選填）'
+            }
+            className="flex-1 min-w-0 px-3 py-2.5 rounded-xl bg-surface2 text-ink text-sm outline-none placeholder:text-faint resize-none leading-relaxed"
+          />
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={busy}
+            className="shrink-0 w-[62px] rounded-xl bg-surface2 grid place-items-center text-muted active:scale-95 transition disabled:opacity-50"
+            aria-label="加照片"
+          >
+            {busy ? (
+              <span className="text-[10px]">處理中</span>
+            ) : (
+              <>
+                <IconCamera className="w-5 h-5" />
+                <span className="text-[10px] mt-0.5">照片</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        {photos.length > 0 && (
+          <div className="flex gap-2 items-center overflow-x-auto pt-1 pb-1">
+            {photos.map((id) => (
+              <PhotoThumb
+                key={id}
+                id={id}
+                onClick={() => setViewing(id)}
+                onRemove={() => setPhotos((p) => p.filter((x) => x !== id))}
+              />
+            ))}
+          </div>
+        )}
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files?.length) attach(e.target.files)
+            e.target.value = ''
+          }}
+        />
+
         <div className="flex gap-2">
           <input
             type="date"
@@ -209,13 +310,9 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
             ))}
           </select>
         </div>
-        <input
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="備註（選填）"
-          className="w-full h-11 px-3 rounded-xl bg-surface2 text-ink text-sm outline-none placeholder:text-faint"
-        />
       </div>
+
+      <PhotoViewer id={viewing} onClose={() => setViewing(null)} />
     </Sheet>
   )
 }

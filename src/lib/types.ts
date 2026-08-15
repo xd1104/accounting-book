@@ -50,7 +50,10 @@ export interface Txn {
   categoryId: string
   /** 這筆錢從哪個帳戶出。只有從零用錢帳戶出的才會扣每日額度 */
   accountId: string | null
+  /** 說明：吃了什麼、買了什麼，可多行 */
   note: string
+  /** 照片 id，實際影像存在 IndexedDB（localStorage 塞不下） */
+  photos?: string[]
   date: string // 'YYYY-MM-DD'
   createdAt: string
   updatedAt: string

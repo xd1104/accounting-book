@@ -4,6 +4,7 @@ import type { Account, AppData, Category, MonthPlan, Settings, Txn } from './lib
 import { LocalStorageAdapter } from './lib/storage'
 import type { StorageAdapter } from './lib/storage'
 import { emptyData, uid } from './lib/defaults'
+import { deletePhotos, pruneOrphans } from './lib/photos'
 
 export type Theme = 'system' | 'light' | 'dark'
 
@@ -18,7 +19,6 @@ interface Store {
   deleteTxn: (id: string) => void
 
   savePlan: (plan: MonthPlan) => void
-  toggleAllocation: (month: string, accountId: string) => void
 
   addCategory: (c: Omit<Category, 'id' | 'order'>) => void
   updateCategory: (id: string, patch: Partial<Category>) => void
@@ -125,31 +125,15 @@ export function StoreProvider({
         }))
       },
       deleteTxn(id) {
-        mutate((d) => ({ ...d, txns: d.txns.filter((t) => t.id !== id) }))
+        mutate((d) => {
+          const gone = d.txns.find((t) => t.id === id)
+          if (gone?.photos?.length) deletePhotos(gone.photos)
+          return { ...d, txns: d.txns.filter((t) => t.id !== id) }
+        })
       },
 
       savePlan(plan) {
         mutate((d) => ({ ...d, plans: { ...d.plans, [plan.month]: plan } }))
-      },
-      toggleAllocation(month, accountId) {
-        mutate((d) => {
-          const plan = d.plans[month]
-          if (!plan) return d
-          return {
-            ...d,
-            plans: {
-              ...d.plans,
-              [month]: {
-                ...plan,
-                allocations: plan.allocations.map((a) =>
-                  a.accountId === accountId
-                    ? { ...a, done: !a.done, doneAt: !a.done ? new Date().toISOString() : undefined }
-                    : a,
-                ),
-              },
-            },
-          }
-        })
       },
 
       addCategory(c) {
@@ -201,9 +185,12 @@ export function StoreProvider({
         mutate((d) => ({ ...d, settings: { ...d.settings, ...patch } }))
       },
       replaceAll(next) {
+        // Anything the incoming data doesn't reference is now dead weight.
+        pruneOrphans(new Set(next.txns.flatMap((t) => t.photos ?? []))).catch(() => {})
         mutate(() => next)
       },
       resetAll() {
+        pruneOrphans(new Set()).catch(() => {})
         mutate(() => emptyData())
       },
     }

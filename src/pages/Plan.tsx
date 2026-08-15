@@ -1,19 +1,19 @@
 import { useMemo, useState } from 'react'
 import { useStore } from '../store'
-import { emptyPlan, getPlan, summarize } from '../lib/budget'
-import { addMonths, currentPeriod, formatMonthLabel, periodRange } from '../lib/date'
+import { emptyPlan, resolvePlan, summarize } from '../lib/budget'
+import { currentPeriod, formatMonthLabel, addMonths, periodRange } from '../lib/date'
 import { money } from '../lib/format'
 import type { Allocation, MonthPlan } from '../lib/types'
 import { IconCheck, IconChevronL, IconChevronR, IconPlus, IconTrash } from '../components/icons'
 import { Sheet } from '../components/Sheet'
 
 export function Plan() {
-  const { data, savePlan, toggleAllocation } = useStore()
+  const { data, savePlan } = useStore()
   const sym = data.settings.currencySymbol
   const [month, setMonth] = useState(() => currentPeriod(data.settings.monthStartDay))
   const [picking, setPicking] = useState(false)
 
-  const plan = getPlan(data, month)
+  const { plan, carried, from } = useMemo(() => resolvePlan(data, month), [data, month])
   const s = useMemo(() => summarize(data, month), [data, month])
   const range = periodRange(month, data.settings.monthStartDay)
 
@@ -41,18 +41,20 @@ export function Plan() {
     savePlan({ ...plan, allocations: plan.allocations.filter((a) => a.accountId !== accountId) })
   }
 
-  const copyLastMonth = () => {
-    const prev = getPlan(data, addMonths(month, -1))
-    if (!prev) return
+  /** Ticking a carried-over plan is also what writes it down for this month. */
+  const toggleDone = (accountId: string) => {
+    if (!plan) return
     savePlan({
-      ...prev,
-      month,
-      allocations: prev.allocations.map((a) => ({ ...a, done: false, doneAt: undefined })),
+      ...plan,
+      allocations: plan.allocations.map((a) =>
+        a.accountId === accountId
+          ? { ...a, done: !a.done, doneAt: !a.done ? new Date().toISOString() : undefined }
+          : a,
+      ),
     })
   }
 
   const unused = accounts.filter((a) => !plan?.allocations.some((x) => x.accountId === a.id))
-  const prevPlanExists = !!getPlan(data, addMonths(month, -1))
 
   return (
     <div className="px-4 pb-6 space-y-4">
@@ -94,15 +96,16 @@ export function Plan() {
             className="flex-1 bg-transparent text-3xl font-bold tnum outline-none min-w-0 placeholder:text-faint"
           />
         </div>
-        {!plan && prevPlanExists && (
-          <button
-            onClick={copyLastMonth}
-            className="mt-3 w-full h-10 rounded-xl bg-brand-soft text-brand text-sm font-semibold active:scale-[0.98] transition"
-          >
-            沿用上個月的分配
-          </button>
-        )}
       </div>
+
+      {carried && from && (
+        <div className="rounded-2xl px-4 py-3 bg-brand-soft text-brand text-xs flex items-center gap-2">
+          <span className="text-base">↻</span>
+          <span>
+            自動沿用 <b>{formatMonthLabel(from)}</b> 的分配。改金額或打勾之後，就會存成這個月的。
+          </span>
+        </div>
+      )}
 
       {/* allocations */}
       <div className="bg-surface rounded-3xl p-2">
@@ -126,7 +129,7 @@ export function Plan() {
               return (
                 <div key={a.accountId} className="flex items-center gap-2 px-2 py-2.5">
                   <button
-                    onClick={() => toggleAllocation(month, a.accountId)}
+                    onClick={() => toggleDone(a.accountId)}
                     aria-label={a.done ? '標記為未轉帳' : '標記為已轉帳'}
                     className={`w-7 h-7 shrink-0 grid place-items-center rounded-full transition active:scale-90 ${
                       a.done ? 'bg-ok text-white' : 'border-2 border-line text-transparent'
