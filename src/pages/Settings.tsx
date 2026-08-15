@@ -1,0 +1,188 @@
+import { useRef, useState } from 'react'
+import { useStore } from '../store'
+import type { Theme } from '../store'
+import { downloadBackup, migrate } from '../lib/storage'
+import { push } from '../router'
+import { IconChevronR } from '../components/icons'
+import { Toggle } from './Plan'
+
+export function Settings() {
+  const { data, updateSettings, replaceAll, resetAll, theme, setTheme } = useStore()
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [msg, setMsg] = useState('')
+
+  const doImport = async (file: File) => {
+    try {
+      const parsed = JSON.parse(await file.text())
+      const next = migrate(parsed)
+      const n = next.txns.length
+      if (!confirm(`匯入 ${n} 筆記錄？這會覆蓋目前這台裝置上的所有資料。`)) return
+      replaceAll(next)
+      setMsg(`已匯入 ${n} 筆記錄`)
+    } catch {
+      setMsg('檔案讀不到或格式不對')
+    }
+  }
+
+  return (
+    <div className="px-4 pb-6 space-y-4">
+      <Group title="外觀">
+        <Row label="主題">
+          <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-surface2">
+            {(['system', 'light', 'dark'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTheme(t as Theme)}
+                className={`px-3 h-7 rounded-lg text-xs font-semibold transition ${
+                  theme === t ? 'bg-surface text-ink shadow-sm' : 'text-muted'
+                }`}
+              >
+                {t === 'system' ? '跟隨系統' : t === 'light' ? '淺色' : '深色'}
+              </button>
+            ))}
+          </div>
+        </Row>
+      </Group>
+
+      <Group title="記帳設定">
+        <Row label="貨幣符號">
+          <input
+            value={data.settings.currencySymbol}
+            onChange={(e) => updateSettings({ currencySymbol: e.target.value.slice(0, 3) })}
+            className="w-20 h-9 px-3 text-right rounded-xl bg-surface2 outline-none text-sm"
+          />
+        </Row>
+        <Row
+          label="每月起算日"
+          hint={
+            data.settings.monthStartDay === 1
+              ? '以自然月計算'
+              : `每月 ${data.settings.monthStartDay} 號到下個月 ${data.settings.monthStartDay - 1} 號為一期`
+          }
+        >
+          <select
+            value={data.settings.monthStartDay}
+            onChange={(e) => updateSettings({ monthStartDay: Number(e.target.value) })}
+            className="h-9 px-3 rounded-xl bg-surface2 outline-none text-sm"
+          >
+            {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+              <option key={d} value={d}>
+                {d} 號
+              </option>
+            ))}
+          </select>
+        </Row>
+      </Group>
+
+      <Group title="管理">
+        <NavRow label="帳戶" hint={`${data.accounts.filter((a) => !a.archived).length} 個`} onClick={() => push('/accounts')} />
+        <NavRow
+          label="分類"
+          hint={`${data.categories.filter((c) => !c.archived).length} 個`}
+          onClick={() => push('/categories')}
+        />
+      </Group>
+
+      <Group title="資料備份">
+        <div className="px-4 pb-3 text-xs text-muted">
+          資料目前存在這台裝置的瀏覽器裡，換手機或清除瀏覽器資料就會不見。
+          要搬到別台裝置，就先「匯出備份」再到另一台「匯入備份」。
+        </div>
+        <Row label="記錄筆數">
+          <span className="text-sm tnum text-muted">{data.txns.length} 筆</span>
+        </Row>
+        <div className="px-3 pb-3 grid grid-cols-2 gap-2">
+          <button
+            onClick={() => downloadBackup(data)}
+            className="h-11 rounded-2xl bg-brand text-white text-sm font-semibold active:scale-[0.98] transition"
+          >
+            匯出備份
+          </button>
+          <button
+            onClick={() => fileRef.current?.click()}
+            className="h-11 rounded-2xl bg-surface2 text-ink text-sm font-semibold active:scale-[0.98] transition"
+          >
+            匯入備份
+          </button>
+        </div>
+        {msg && <div className="px-4 pb-3 text-xs text-ok">{msg}</div>}
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            if (f) doImport(f)
+            e.target.value = ''
+          }}
+        />
+      </Group>
+
+      <Group title="其他">
+        <Row label="安裝到手機" hint="用瀏覽器開啟後，選「加入主畫面」就會變成 App">
+          <span />
+        </Row>
+        <div className="px-3 pb-3">
+          <button
+            onClick={() => {
+              if (confirm('清除所有資料？這無法復原，建議先匯出備份。')) {
+                resetAll()
+                setMsg('已清除')
+              }
+            }}
+            className="w-full h-11 rounded-2xl bg-bad/12 text-bad text-sm font-semibold active:scale-[0.98] transition"
+          >
+            清除所有資料
+          </button>
+        </div>
+      </Group>
+
+      <div className="text-center text-xs text-faint pt-2">記帳本 v1.0</div>
+    </div>
+  )
+}
+
+function Group({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="text-xs text-muted px-4 pb-1.5 pt-1">{title}</div>
+      <div className="bg-surface rounded-3xl overflow-hidden">{children}</div>
+    </div>
+  )
+}
+
+function Row({
+  label,
+  hint,
+  children,
+}: {
+  label: string
+  hint?: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="flex items-center gap-3 px-4 py-3 border-b border-line last:border-0">
+      <span className="flex-1 min-w-0">
+        <span className="block text-sm">{label}</span>
+        {hint && <span className="block text-[11px] text-faint">{hint}</span>}
+      </span>
+      {children}
+    </div>
+  )
+}
+
+function NavRow({ label, hint, onClick }: { label: string; hint?: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full flex items-center gap-3 px-4 py-3.5 border-b border-line last:border-0 text-left active:bg-surface2"
+    >
+      <span className="flex-1 text-sm">{label}</span>
+      {hint && <span className="text-xs text-muted">{hint}</span>}
+      <IconChevronR className="w-4 h-4 text-faint" />
+    </button>
+  )
+}
+
+export { Toggle }
