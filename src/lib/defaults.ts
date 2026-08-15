@@ -1,5 +1,24 @@
-import type { Account, AppData, Category, Settings } from './types'
+import type { Account, AccountKind, AppData, Category, Settings } from './types'
 import { DATA_VERSION } from './types'
+
+/** Display order of the allocation types, used by the pickers and the grouped list. */
+export const ACCOUNT_KINDS: AccountKind[] = ['allowance', 'fixed', 'saving', 'invest', 'other']
+
+export const KIND_LABEL: Record<AccountKind, string> = {
+  allowance: '日常零用錢',
+  fixed: '固定支出',
+  saving: '儲蓄',
+  invest: '投資',
+  other: '其他',
+}
+
+export const KIND_HINT: Record<AccountKind, string> = {
+  allowance: '每天可以花的錢，額度由這裡算出來',
+  fixed: '房租、保險、電信等每月固定要付的',
+  saving: '存起來不動的',
+  invest: '拿去投資的',
+  other: '其他用途',
+}
 
 export function uid(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
@@ -50,9 +69,9 @@ export function defaultCategories(): Category[] {
 export function defaultAccounts(): Account[] {
   const defs: Array<[string, string, string, Account['kind']]> = [
     ['生活費', '💳', '#6366f1', 'allowance'],
-    ['固定支出', '🏠', '#a16207', 'fixed'],
+    ['房租', '🏠', '#a16207', 'fixed'],
     ['儲蓄', '🏦', '#22c55e', 'saving'],
-    ['投資', '📈', '#06b6d4', 'saving'],
+    ['投資', '📈', '#06b6d4', 'invest'],
     ['緊急預備金', '🛟', '#f97316', 'saving'],
   ]
   return defs.map(([name, emoji, color, kind], i) => ({
@@ -83,6 +102,15 @@ export const CATEGORY_EMOJIS = [
   '🧻', '🧼', '💊', '🏥', '💇', '📱', '💻', '🏠', '💡', '💧',
   '🎁', '❤️', '🐶', '🐱', '✨', '💰', '🎉', '📈', '💼', '🏦',
 ]
+
+/** Starting icon for a new allocation item, chosen by its type until the user picks one. */
+export const KIND_EMOJI: Record<AccountKind, string> = {
+  allowance: '💳',
+  fixed: '🏠',
+  saving: '🏦',
+  invest: '📈',
+  other: '💼',
+}
 
 export const PALETTE = [
   '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e',

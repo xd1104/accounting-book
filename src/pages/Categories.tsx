@@ -4,7 +4,7 @@ import type { Category, TxnType } from '../lib/types'
 import { Sheet } from '../components/Sheet'
 import { PALETTE } from '../lib/defaults'
 import { IconPlus, IconTrash } from '../components/icons'
-import { ColorPicker, EmojiPicker } from './Accounts'
+import { ColorPicker, EmojiPicker } from '../components/pickers'
 
 export function Categories() {
   const { data, addCategory, updateCategory, deleteCategory } = useStore()

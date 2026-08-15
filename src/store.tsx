@@ -24,7 +24,7 @@ interface Store {
   updateCategory: (id: string, patch: Partial<Category>) => void
   deleteCategory: (id: string) => void
 
-  addAccount: (a: Omit<Account, 'id' | 'order'>) => void
+  addAccount: (a: Omit<Account, 'id' | 'order'>) => string
   updateAccount: (id: string, patch: Partial<Account>) => void
   deleteAccount: (id: string) => void
 
@@ -159,10 +159,12 @@ export function StoreProvider({
       },
 
       addAccount(a) {
+        const id = uid()
         mutate((d) => ({
           ...d,
-          accounts: [...d.accounts, { ...a, id: uid(), order: nextOrder(d.accounts) }],
+          accounts: [...d.accounts, { ...a, id, order: nextOrder(d.accounts) }],
         }))
+        return id
       },
       updateAccount(id, patch) {
         mutate((d) => ({

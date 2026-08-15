@@ -5,7 +5,6 @@ import { downloadBackup, migrate, restorePhotos } from '../lib/storage'
 import { storageEstimate } from '../lib/photos'
 import { push } from '../router'
 import { IconChevronR } from '../components/icons'
-import { Toggle } from './Plan'
 
 export function Settings() {
   const { data, updateSettings, replaceAll, resetAll, theme, setTheme } = useStore()
@@ -181,6 +180,7 @@ export function Settings() {
   )
 }
 
+
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
@@ -223,4 +223,3 @@ function NavRow({ label, hint, onClick }: { label: string; hint?: string; onClic
   )
 }
 
-export { Toggle }

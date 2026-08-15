@@ -1,7 +1,7 @@
 export type TxnType = 'expense' | 'income'
 
-/** 帳戶用途：allowance = 日常零用錢來源；fixed = 固定支出；saving = 存起來不動的 */
-export type AccountKind = 'allowance' | 'fixed' | 'saving'
+/** 分配項目的類型。allowance 會被拿來推算每日零用錢，其餘為分類用途。 */
+export type AccountKind = 'allowance' | 'fixed' | 'saving' | 'invest' | 'other'
 
 export interface Category {
   id: string

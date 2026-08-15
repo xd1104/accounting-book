@@ -1,17 +1,21 @@
 import { useMemo, useState } from 'react'
 import { useStore } from '../store'
 import { emptyPlan, resolvePlan, summarize } from '../lib/budget'
-import { currentPeriod, formatMonthLabel, addMonths, periodRange } from '../lib/date'
+import { addMonths, currentPeriod, formatMonthLabel, periodRange } from '../lib/date'
 import { money } from '../lib/format'
-import type { Allocation, MonthPlan } from '../lib/types'
+import { ACCOUNT_KINDS, KIND_LABEL } from '../lib/defaults'
+import type { Account, Allocation, MonthPlan } from '../lib/types'
 import { IconCheck, IconChevronL, IconChevronR, IconPlus, IconTrash } from '../components/icons'
 import { Sheet } from '../components/Sheet'
+import { Toggle } from '../components/Toggle'
+import { AccountEditor } from '../components/AccountEditor'
 
 export function Plan() {
-  const { data, savePlan } = useStore()
+  const { data, savePlan, addAccount, updateAccount } = useStore()
   const sym = data.settings.currencySymbol
   const [month, setMonth] = useState(() => currentPeriod(data.settings.monthStartDay))
   const [picking, setPicking] = useState(false)
+  const [editingAccount, setEditingAccount] = useState<Account | 'new' | null>(null)
 
   const { plan, carried, from } = useMemo(() => resolvePlan(data, month), [data, month])
   const s = useMemo(() => summarize(data, month), [data, month])
@@ -22,31 +26,30 @@ export function Plan() {
     [data.accounts],
   )
 
-  const write = (patch: Partial<MonthPlan>) => {
-    const base = plan ?? emptyPlan(month, accounts.find((a) => a.kind === 'allowance')?.id ?? null)
-    savePlan({ ...base, ...patch })
-  }
+  const base = () => plan ?? emptyPlan(month, accounts.find((a) => a.kind === 'allowance')?.id ?? null)
+
+  const write = (patch: Partial<MonthPlan>) => savePlan({ ...base(), ...patch })
 
   const setAllocation = (accountId: string, amount: number) => {
-    const base = plan ?? emptyPlan(month, accounts.find((a) => a.kind === 'allowance')?.id ?? null)
-    const exists = base.allocations.some((a) => a.accountId === accountId)
+    const b = base()
+    const exists = b.allocations.some((a) => a.accountId === accountId)
     const allocations: Allocation[] = exists
-      ? base.allocations.map((a) => (a.accountId === accountId ? { ...a, amount } : a))
-      : [...base.allocations, { accountId, amount, done: false }]
-    savePlan({ ...base, allocations })
+      ? b.allocations.map((a) => (a.accountId === accountId ? { ...a, amount } : a))
+      : [...b.allocations, { accountId, amount, done: false }]
+    savePlan({ ...b, allocations })
   }
 
   const removeAllocation = (accountId: string) => {
-    if (!plan) return
-    savePlan({ ...plan, allocations: plan.allocations.filter((a) => a.accountId !== accountId) })
+    const b = base()
+    savePlan({ ...b, allocations: b.allocations.filter((a) => a.accountId !== accountId) })
   }
 
   /** Ticking a carried-over plan is also what writes it down for this month. */
   const toggleDone = (accountId: string) => {
-    if (!plan) return
+    const b = base()
     savePlan({
-      ...plan,
-      allocations: plan.allocations.map((a) =>
+      ...b,
+      allocations: b.allocations.map((a) =>
         a.accountId === accountId
           ? { ...a, done: !a.done, doneAt: !a.done ? new Date().toISOString() : undefined }
           : a,
@@ -55,6 +58,36 @@ export function Plan() {
   }
 
   const unused = accounts.filter((a) => !plan?.allocations.some((x) => x.accountId === a.id))
+
+  /**
+   * The allowance source having no money allocated this month is an easy trap —
+   * the daily budget silently reads 0 with nothing explaining why.
+   */
+  const allowanceUnfunded = useMemo(() => {
+    const id = plan?.allowanceAccountId
+    if (!id || plan?.dailyAllowanceOverride != null) return null
+    const alloc = plan?.allocations.find((a) => a.accountId === id)
+    if (alloc && alloc.amount > 0) return null
+    return accounts.find((a) => a.id === id) ?? null
+  }, [plan, accounts])
+
+  // Group the allocations by type — with many items this is what keeps the list readable.
+  const groups = useMemo(() => {
+    const rows = (plan?.allocations ?? []).map((a) => ({
+      alloc: a,
+      account: accounts.find((x) => x.id === a.accountId) ?? null,
+    }))
+    return ACCOUNT_KINDS.map((kind) => ({
+      kind,
+      rows: rows.filter((r) => (r.account?.kind ?? 'other') === kind),
+    }))
+      .filter((g) => g.rows.length > 0)
+      .concat(
+        rows.some((r) => !r.account)
+          ? [{ kind: 'other' as const, rows: rows.filter((r) => !r.account) }]
+          : [],
+      )
+  }, [plan, accounts])
 
   return (
     <div className="px-4 pb-6 space-y-4">
@@ -107,80 +140,93 @@ export function Plan() {
         </div>
       )}
 
-      {/* allocations */}
+      {/* allocations, grouped by type */}
       <div className="bg-surface rounded-3xl p-2">
         <div className="flex items-center justify-between px-3 pt-2 pb-1">
-          <span className="font-semibold text-sm">分配到帳戶</span>
+          <span className="font-semibold text-sm">分配項目</span>
           <span className="text-xs tnum text-muted">
             {s.allocated > 0 && `已分配 ${money(s.allocated, sym)}`}
           </span>
         </div>
 
-        {(plan?.allocations.length ?? 0) === 0 ? (
+        {groups.length === 0 ? (
           <div className="py-6 text-center text-sm text-faint">
             還沒有分配
             <br />
-            <span className="text-xs">按下方「新增分配」把薪水配到各帳戶</span>
+            <span className="text-xs">按下方「新增分配項目」開始</span>
           </div>
         ) : (
-          <div className="divide-y divide-line">
-            {plan!.allocations.map((a) => {
-              const acc = accounts.find((x) => x.id === a.accountId)
-              return (
-                <div key={a.accountId} className="flex items-center gap-2 px-2 py-2.5">
-                  <button
-                    onClick={() => toggleDone(a.accountId)}
-                    aria-label={a.done ? '標記為未轉帳' : '標記為已轉帳'}
-                    className={`w-7 h-7 shrink-0 grid place-items-center rounded-full transition active:scale-90 ${
-                      a.done ? 'bg-ok text-white' : 'border-2 border-line text-transparent'
-                    }`}
-                  >
-                    <IconCheck className="w-3.5 h-3.5" />
-                  </button>
-
-                  <span className="w-8 h-8 shrink-0 grid place-items-center rounded-full text-base"
-                    style={{ background: `${acc?.color ?? '#6b7280'}22` }}>
-                    {acc?.emoji ?? '💼'}
-                  </span>
-
-                  <span className={`flex-1 min-w-0 text-sm truncate ${a.done ? 'text-muted' : ''}`}>
-                    {acc?.name ?? '（帳戶已刪除）'}
-                    {plan!.allowanceAccountId === a.accountId && (
-                      <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-brand-soft text-brand align-middle">
-                        零用錢
-                      </span>
-                    )}
-                  </span>
-
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    value={a.amount || ''}
-                    placeholder="0"
-                    onChange={(e) => setAllocation(a.accountId, Number(e.target.value) || 0)}
-                    className="w-24 h-9 px-2 text-right rounded-lg bg-surface2 tnum text-sm outline-none"
-                  />
-                  <button
-                    onClick={() => removeAllocation(a.accountId)}
-                    aria-label="移除"
-                    className="w-8 h-8 shrink-0 grid place-items-center rounded-lg text-faint active:text-bad"
-                  >
-                    <IconTrash className="w-4 h-4" />
-                  </button>
+          groups.map((g) => {
+            const subtotal = g.rows.reduce((n, r) => n + r.alloc.amount, 0)
+            return (
+              <div key={g.kind} className="pt-2">
+                <div className="flex items-baseline justify-between px-3 pb-1">
+                  <span className="text-[11px] font-semibold text-muted">{KIND_LABEL[g.kind]}</span>
+                  <span className="text-[11px] text-faint tnum">{money(subtotal, sym)}</span>
                 </div>
-              )
-            })}
-          </div>
+                <div className="divide-y divide-line">
+                  {g.rows.map(({ alloc: a, account: acc }) => (
+                    <div key={a.accountId} className="flex items-center gap-2 px-2 py-2.5">
+                      <button
+                        onClick={() => toggleDone(a.accountId)}
+                        aria-label={a.done ? '標記為未轉帳' : '標記為已轉帳'}
+                        className={`w-7 h-7 shrink-0 grid place-items-center rounded-full transition active:scale-90 ${
+                          a.done ? 'bg-ok text-white' : 'border-2 border-line text-transparent'
+                        }`}
+                      >
+                        <IconCheck className="w-3.5 h-3.5" />
+                      </button>
+
+                      {/* tapping the name edits the item itself */}
+                      <button
+                        onClick={() => acc && setEditingAccount(acc)}
+                        className="flex items-center gap-2 flex-1 min-w-0 text-left active:opacity-60"
+                      >
+                        <span
+                          className="w-8 h-8 shrink-0 grid place-items-center rounded-full text-base"
+                          style={{ background: `${acc?.color ?? '#6b7280'}22` }}
+                        >
+                          {acc?.emoji ?? '💼'}
+                        </span>
+                        <span className={`min-w-0 text-sm truncate ${a.done ? 'text-muted' : ''}`}>
+                          {acc?.name ?? '（項目已刪除）'}
+                          {plan?.allowanceAccountId === a.accountId && (
+                            <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-brand-soft text-brand align-middle">
+                              零用錢
+                            </span>
+                          )}
+                        </span>
+                      </button>
+
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        value={a.amount || ''}
+                        placeholder="0"
+                        onChange={(e) => setAllocation(a.accountId, Number(e.target.value) || 0)}
+                        className="w-24 h-9 px-2 text-right rounded-lg bg-surface2 tnum text-sm outline-none"
+                      />
+                      <button
+                        onClick={() => removeAllocation(a.accountId)}
+                        aria-label="移除"
+                        className="w-8 h-8 shrink-0 grid place-items-center rounded-lg text-faint active:text-bad"
+                      >
+                        <IconTrash className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })
         )}
 
-        {unused.length > 0 && (
-          <button
-            onClick={() => setPicking(true)}
-            className="w-full h-11 mt-1 rounded-2xl text-sm font-medium text-brand flex items-center justify-center gap-1 active:bg-surface2"
-          >
-            <IconPlus className="w-4 h-4" /> 新增分配
-          </button>
-        )}
+        <button
+          onClick={() => (unused.length > 0 ? setPicking(true) : setEditingAccount('new'))}
+          className="w-full h-11 mt-1 rounded-2xl text-sm font-medium text-brand flex items-center justify-center gap-1 active:bg-surface2"
+        >
+          <IconPlus className="w-4 h-4" /> 新增分配項目
+        </button>
       </div>
 
       {/* unallocated banner */}
@@ -204,6 +250,13 @@ export function Plan() {
       {/* allowance settings */}
       <div className="bg-surface rounded-3xl p-4 space-y-4">
         <div className="font-semibold text-sm">零用錢設定</div>
+
+        {allowanceUnfunded && (
+          <div className="rounded-2xl px-3 py-2.5 bg-warn/12 text-warn text-xs">
+            零用錢來源「{allowanceUnfunded.name}」這個月還沒分配到錢，所以每日額度是 0。
+            上面把金額填進去就會自動算出來。
+          </div>
+        )}
 
         <label className="flex items-center gap-3">
           <span className="text-sm text-muted flex-1">零用錢來源</span>
@@ -245,27 +298,36 @@ export function Plan() {
         <label className="flex items-center gap-3">
           <span className="text-sm text-muted flex-1">
             結餘累積
-            <span className="block text-[11px] text-faint">
-              今天沒花完的，明天可以繼續花
-            </span>
+            <span className="block text-[11px] text-faint">今天沒花完的，明天可以繼續花</span>
           </span>
-          <Toggle
-            on={plan?.rollover ?? true}
-            onChange={(v) => write({ rollover: v })}
-          />
+          <Toggle on={plan?.rollover ?? true} onChange={(v) => write({ rollover: v })} />
         </label>
 
         <div className="pt-1 border-t border-line flex items-baseline justify-between">
           <span className="text-sm text-muted">每天可以花</span>
-          <span className="text-2xl font-bold tnum text-brand">
-            {money(s.dailyAllowance, sym)}
-          </span>
+          <span className="text-2xl font-bold tnum text-brand">{money(s.dailyAllowance, sym)}</span>
         </div>
       </div>
 
-      {/* account picker */}
-      <Sheet open={picking} onClose={() => setPicking(false)} title="要分配到哪個帳戶？">
+      {/* pick an existing item, or make a new one */}
+      <Sheet open={picking} onClose={() => setPicking(false)} title="加入哪個項目？">
         <div className="pb-4 space-y-1">
+          <button
+            onClick={() => {
+              setPicking(false)
+              setEditingAccount('new')
+            }}
+            className="w-full flex items-center gap-3 p-3 rounded-2xl text-left active:bg-surface2 text-brand"
+          >
+            <span className="w-10 h-10 grid place-items-center rounded-full border-2 border-dashed border-line">
+              <IconPlus className="w-5 h-5" />
+            </span>
+            <span className="font-medium">建立新項目</span>
+          </button>
+
+          {unused.length > 0 && (
+            <div className="text-[11px] text-muted px-3 pt-3 pb-1">已建立的項目</div>
+          )}
           {unused.map((a) => (
             <button
               key={a.id}
@@ -289,29 +351,22 @@ export function Plan() {
           ))}
         </div>
       </Sheet>
-    </div>
-  )
-}
 
-export const KIND_LABEL: Record<string, string> = {
-  allowance: '日常零用錢',
-  fixed: '固定支出',
-  saving: '存起來',
-}
-
-export function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      role="switch"
-      aria-checked={on}
-      onClick={() => onChange(!on)}
-      className={`w-12 h-7 shrink-0 rounded-full p-0.5 transition ${on ? 'bg-ok' : 'bg-line'}`}
-    >
-      <span
-        className={`block w-6 h-6 rounded-full bg-white shadow transition-transform ${
-          on ? 'translate-x-5' : ''
-        }`}
+      <AccountEditor
+        target={editingAccount}
+        seed={data.accounts.length}
+        onClose={() => setEditingAccount(null)}
+        onSave={(v) => {
+          if (editingAccount === 'new') {
+            // Creating from here also drops it straight into this month's plan.
+            const id = addAccount(v)
+            setAllocation(id, 0)
+          } else if (editingAccount) {
+            updateAccount(editingAccount.id, v)
+          }
+          setEditingAccount(null)
+        }}
       />
-    </button>
+    </div>
   )
 }
