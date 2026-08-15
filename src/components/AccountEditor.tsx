@@ -11,7 +11,8 @@ import {
 import { Sheet } from './Sheet'
 import { EmojiField } from './EmojiField'
 import { ColorPicker } from './pickers'
-import { IconTrash } from './icons'
+import { WalletEditor } from './WalletEditor'
+import { IconPlus, IconTrash } from './icons'
 
 /**
  * Create or edit one salary-allocation item. Shared by the settings screen and the
@@ -23,6 +24,7 @@ export function AccountEditor({
   onSave,
   onDelete,
   wallets,
+  onAddWallet,
   /** How many items already exist — used to give a new one an unused-looking colour. */
   seed = 0,
 }: {
@@ -31,6 +33,8 @@ export function AccountEditor({
   onSave: (v: Omit<Account, 'id' | 'order'>) => void
   onDelete?: () => void
   wallets: Wallet[]
+  /** Lets a new place to keep money be added without leaving this sheet. */
+  onAddWallet?: (w: Omit<Wallet, 'id' | 'order'>) => string
   seed?: number
 }) {
   const isNew = target === 'new'
@@ -45,6 +49,7 @@ export function AccountEditor({
   const [kind, setKind] = useState<AccountKind>('saving')
   const [walletId, setWalletId] = useState<string | null>(null)
   const [emojiPicked, setEmojiPicked] = useState(false)
+  const [addingWallet, setAddingWallet] = useState(false)
   const [key, setKey] = useState('')
 
   const defaultWallet = wallets.find((w) => w.kind === 'bank')?.id ?? wallets[0]?.id ?? null
@@ -73,8 +78,9 @@ export function AccountEditor({
   }
 
   return (
+    <>
     <Sheet
-      open={target != null}
+      open={target != null && !addingWallet}
       onClose={onClose}
       title={isNew ? '新增分配項目' : '編輯項目'}
       footer={
@@ -144,27 +150,48 @@ export function AccountEditor({
               轉帳時要轉進哪個戶頭，或直接留成現金
             </span>
           </div>
+
+          {(['cash', 'bank'] as const).map((k) => {
+            const group = wallets.filter((w) => w.kind === k)
+            if (!group.length) return null
+            return (
+              <div key={k} className="mb-2">
+                <div className="text-[11px] text-faint px-1 pb-1">{WALLET_KIND_LABEL[k]}</div>
+                <div className="grid grid-cols-2 gap-2">
+                  {group.map((w) => (
+                    <button
+                      key={w.id}
+                      onClick={() => setWalletId(w.id)}
+                      className={`flex items-center gap-2 p-2.5 rounded-2xl text-left transition ${
+                        walletId === w.id ? 'bg-brand-soft ring-2 ring-brand' : 'bg-surface2'
+                      }`}
+                    >
+                      <span
+                        className="w-8 h-8 shrink-0 grid place-items-center rounded-full text-base"
+                        style={{ background: `${w.color}22` }}
+                      >
+                        {w.emoji}
+                      </span>
+                      <span className="text-sm truncate">{w.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+
           <div className="grid grid-cols-2 gap-2">
-            {wallets.map((w) => (
+            {onAddWallet && (
               <button
-                key={w.id}
-                onClick={() => setWalletId(w.id)}
-                className={`flex items-center gap-2 p-2.5 rounded-2xl text-left transition ${
-                  walletId === w.id ? 'bg-brand-soft ring-2 ring-brand' : 'bg-surface2'
-                }`}
+                onClick={() => setAddingWallet(true)}
+                className="flex items-center gap-2 p-2.5 rounded-2xl bg-surface2 text-left text-brand active:scale-[0.98] transition"
               >
-                <span
-                  className="w-8 h-8 shrink-0 grid place-items-center rounded-full text-base"
-                  style={{ background: `${w.color}22` }}
-                >
-                  {w.emoji}
+                <span className="w-8 h-8 shrink-0 grid place-items-center rounded-full border-2 border-dashed border-line">
+                  <IconPlus className="w-4 h-4" />
                 </span>
-                <span className="min-w-0">
-                  <span className="block text-sm truncate">{w.name}</span>
-                  <span className="block text-[10px] text-muted">{WALLET_KIND_LABEL[w.kind]}</span>
-                </span>
+                <span className="text-sm font-medium">新增</span>
               </button>
-            ))}
+            )}
             <button
               onClick={() => setWalletId(null)}
               className={`flex items-center gap-2 p-2.5 rounded-2xl text-left transition ${
@@ -182,5 +209,18 @@ export function AccountEditor({
         <ColorPicker value={color} onChange={setColor} />
       </div>
     </Sheet>
+
+    {onAddWallet && (
+      <WalletEditor
+        target={addingWallet ? 'new' : null}
+        seed={wallets.length}
+        onClose={() => setAddingWallet(false)}
+        onSave={(v) => {
+          setWalletId(onAddWallet(v))
+          setAddingWallet(false)
+        }}
+      />
+    )}
+    </>
   )
 }

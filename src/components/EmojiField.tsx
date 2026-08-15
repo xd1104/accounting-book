@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Sheet } from './Sheet'
 import { ALL_EMOJIS, EMOJI_GROUPS, searchEmojis } from '../lib/emoji'
 
@@ -56,6 +56,12 @@ function EmojiPickerSheet({
   onPick: (e: string) => void
 }) {
   const [q, setQ] = useState('')
+
+  // Start from the full library each time rather than last session's search.
+  useEffect(() => {
+    if (open) setQ('')
+  }, [open])
+
   const results = q.trim() ? searchEmojis(q) : null
 
   const Cell = ({ e }: { e: string }) => (

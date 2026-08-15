@@ -4,11 +4,12 @@ import { PALETTE } from '../lib/defaults'
 import { Sheet } from './Sheet'
 import { EmojiField } from './EmojiField'
 import { ColorPicker } from './pickers'
+import { BankPicker } from './BankPicker'
 import { IconTrash } from './icons'
 
 const KINDS: Array<[WalletKind, string, string, string]> = [
   ['cash', '現金', '💵', '錢包裡的現鈔、零錢'],
-  ['bank', '戶頭', '🏦', '銀行帳戶、電子支付、信用卡'],
+  ['bank', '戶頭', '🏦', '銀行、電子支付、卡片'],
 ]
 
 export function WalletEditor({
@@ -32,7 +33,9 @@ export function WalletEditor({
   const [emoji, setEmoji] = useState('🏦')
   const [color, setColor] = useState(defaultColor)
   const [kind, setKind] = useState<WalletKind>('bank')
-  const [emojiPicked, setEmojiPicked] = useState(false)
+  const [picking, setPicking] = useState<WalletKind | null>(null)
+  /** New items start on the preset list; the detail form appears once something is chosen. */
+  const [chosen, setChosen] = useState(false)
   const [key, setKey] = useState('')
 
   const targetKey = w?.id ?? (isNew ? `new-${seed}` : '')
@@ -42,82 +45,122 @@ export function WalletEditor({
     setEmoji(w?.emoji ?? '🏦')
     setColor(w?.color ?? defaultColor)
     setKind(w?.kind ?? 'bank')
-    setEmojiPicked(!isNew)
+    setChosen(!isNew)
+    setPicking(null)
   }
 
-  const chooseKind = (k: WalletKind) => {
+  const startKind = (k: WalletKind) => {
     setKind(k)
-    if (!emojiPicked) setEmoji(k === 'cash' ? '💵' : '🏦')
+    setPicking(k)
   }
 
   return (
-    <Sheet
-      open={target != null}
-      onClose={onClose}
-      title={isNew ? '新增存放處' : '編輯存放處'}
-      footer={
-        <div className="flex gap-2">
-          {!isNew && onDelete && (
-            <button
-              onClick={() => confirm('刪除這個存放處？已使用的會保留在舊記錄裡。') && onDelete()}
-              className="w-12 h-12 grid place-items-center rounded-2xl bg-surface2 text-bad"
-              aria-label="刪除"
-            >
-              <IconTrash className="w-5 h-5" />
-            </button>
-          )}
-          <button
-            onClick={() => name.trim() && onSave({ name: name.trim(), emoji, color, kind })}
-            disabled={!name.trim()}
-            className="flex-1 h-12 rounded-2xl bg-brand text-white font-semibold disabled:opacity-40 active:scale-[0.98] transition"
-          >
-            儲存
-          </button>
-        </div>
-      }
-    >
-      <div className="space-y-4 pb-2">
-        <div className="flex items-center gap-3">
-          <EmojiField
-            value={emoji}
-            color={color}
-            onChange={(e) => {
-              setEmoji(e)
-              setEmojiPicked(true)
-            }}
-          />
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="名稱，例如：錢包、中信活存、悠遊卡"
-            autoFocus={isNew}
-            className="flex-1 min-w-0 h-12 px-3 rounded-2xl bg-surface2 outline-none placeholder:text-faint"
-          />
-        </div>
-
-        <div>
-          <div className="text-sm text-muted mb-2">這是現金還是戶頭？</div>
-          <div className="grid grid-cols-2 gap-2">
-            {KINDS.map(([k, label, ico, hint]) => (
+    <>
+      <Sheet
+        open={target != null && picking == null}
+        onClose={onClose}
+        title={isNew ? '新增存放處' : '編輯存放處'}
+        footer={
+          chosen ? (
+            <div className="flex gap-2">
+              {!isNew && onDelete && (
+                <button
+                  onClick={() => confirm('刪除這個存放處？已使用的會保留在舊記錄裡。') && onDelete()}
+                  className="w-12 h-12 grid place-items-center rounded-2xl bg-surface2 text-bad"
+                  aria-label="刪除"
+                >
+                  <IconTrash className="w-5 h-5" />
+                </button>
+              )}
               <button
-                key={k}
-                onClick={() => chooseKind(k)}
-                className={`p-3 rounded-2xl text-left transition ${
-                  kind === k ? 'bg-brand-soft ring-2 ring-brand' : 'bg-surface2'
-                }`}
+                onClick={() => name.trim() && onSave({ name: name.trim(), emoji, color, kind })}
+                disabled={!name.trim()}
+                className="flex-1 h-12 rounded-2xl bg-brand text-white font-semibold disabled:opacity-40 active:scale-[0.98] transition"
               >
-                <span className="block text-xl mb-1">{ico}</span>
-                <span className={`block text-sm ${kind === k ? 'font-semibold text-brand' : ''}`}>
-                  {label}
-                </span>
-                <span className="block text-[11px] text-muted leading-tight mt-0.5">{hint}</span>
+                儲存
               </button>
-            ))}
+            </div>
+          ) : undefined
+        }
+      >
+        {!chosen ? (
+          // Step 1 — what kind of place is this? Each choice opens its preset list.
+          <div className="pb-4">
+            <p className="text-sm text-muted mb-3">這筆錢放在哪一種地方？</p>
+            <div className="space-y-2">
+              {KINDS.map(([k, label, ico, hint]) => (
+                <button
+                  key={k}
+                  onClick={() => startKind(k)}
+                  className="w-full flex items-center gap-3 p-4 rounded-2xl bg-surface2 text-left active:scale-[0.99] transition"
+                >
+                  <span className="w-12 h-12 shrink-0 grid place-items-center rounded-full bg-surface text-2xl">
+                    {ico}
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block font-semibold">{label}</span>
+                    <span className="block text-xs text-muted">{hint}</span>
+                  </span>
+                  <span className="text-faint">›</span>
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        ) : (
+          // Step 2 — the preset filled everything in; tweak if wanted.
+          <div className="space-y-4 pb-2">
+            <div className="flex items-center gap-3">
+              <EmojiField value={emoji} color={color} onChange={setEmoji} />
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="名稱"
+                className="flex-1 min-w-0 h-12 px-3 rounded-2xl bg-surface2 outline-none placeholder:text-faint"
+              />
+            </div>
 
-        <ColorPicker value={color} onChange={setColor} />
-      </div>
-    </Sheet>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted flex-1">
+                {kind === 'cash' ? '現金' : '戶頭'}
+                <span className="text-faint"> · 名稱可以自己改，例如「國泰-薪轉」</span>
+              </span>
+              <button
+                onClick={() => setPicking(kind)}
+                className="px-3 h-8 rounded-xl bg-surface2 text-xs font-medium text-brand active:scale-95 transition"
+              >
+                重新選擇
+              </button>
+            </div>
+
+            <ColorPicker value={color} onChange={setColor} />
+          </div>
+        )}
+      </Sheet>
+
+      <BankPicker
+        open={picking != null}
+        kind={picking ?? 'bank'}
+        onClose={() => {
+          setPicking(null)
+          // Backing out of the list on a fresh item returns to the kind choice.
+          if (!chosen) setChosen(false)
+        }}
+        onPick={(p) => {
+          setName(p.name)
+          setEmoji(p.emoji)
+          setColor(p.color)
+          setPicking(null)
+          setChosen(true)
+        }}
+        onManual={() => {
+          setPicking(null)
+          setChosen(true)
+          if (!name) {
+            setEmoji(kind === 'cash' ? '💵' : '🏦')
+            setColor(defaultColor)
+          }
+        }}
+      />
+    </>
   )
 }

@@ -12,7 +12,7 @@ import { Toggle } from '../components/Toggle'
 import { AccountEditor } from '../components/AccountEditor'
 
 export function Plan() {
-  const { data, savePlan, addAccount, updateAccount } = useStore()
+  const { data, savePlan, addAccount, updateAccount, addWallet } = useStore()
   const sym = data.settings.currencySymbol
   const [month, setMonth] = useState(() => currentPeriod(data.settings.monthStartDay))
   const [picking, setPicking] = useState(false)
@@ -492,6 +492,7 @@ export function Plan() {
         target={editingAccount}
         seed={data.accounts.length}
         wallets={wallets}
+        onAddWallet={addWallet}
         onClose={() => setEditingAccount(null)}
         onSave={(v) => {
           if (editingAccount === 'new') {

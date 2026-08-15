@@ -6,7 +6,7 @@ import { AccountEditor } from '../components/AccountEditor'
 import { IconPlus } from '../components/icons'
 
 export function Accounts() {
-  const { data, addAccount, updateAccount, deleteAccount } = useStore()
+  const { data, addAccount, updateAccount, deleteAccount, addWallet } = useStore()
   const [editing, setEditing] = useState<Account | 'new' | null>(null)
 
   const accounts = useMemo(
@@ -70,6 +70,7 @@ export function Accounts() {
         target={editing}
         seed={data.accounts.length}
         wallets={data.wallets.filter((w) => !w.archived)}
+        onAddWallet={addWallet}
         onClose={() => setEditing(null)}
         onSave={(v) => {
           if (editing === 'new') addAccount(v)
