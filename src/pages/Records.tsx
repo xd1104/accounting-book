@@ -69,7 +69,10 @@ export function Records({ onEditTxn }: { onEditTxn: (id: string) => void }) {
               {money(s.allowanceLeft, sym)}
             </div>
             <div className="text-[10px] text-faint mt-0.5 tnum">
-              共 {money(s.allowanceTotal, sym)}
+              分配 {money(s.allowanceTotal, sym)}
+              {s.incomeAllowance > 0 && (
+                <span className="text-ok"> + 收入 {money(s.incomeAllowance, sym)}</span>
+              )}
             </div>
           </div>
           <div>
@@ -94,10 +97,14 @@ export function Records({ onEditTxn }: { onEditTxn: (id: string) => void }) {
                   {r.emoji}
                 </span>
                 <span className="flex-1 min-w-0 truncate text-muted">{r.name}</span>
-                {r.allocated > 0 ? (
+                {r.allocated > 0 || r.income > 0 ? (
                   <>
                     <span className="text-[11px] text-faint tnum">
-                      已花 {money(r.spent, sym)} /{' '}
+                      已花 {money(r.spent, sym)}
+                      {r.income > 0 && (
+                        <span className="text-ok"> +{money(r.income, sym)}</span>
+                      )}{' '}
+                      /{' '}
                     </span>
                     <span className={`tnum font-semibold ${r.left < 0 ? 'text-bad' : ''}`}>
                       {money(r.left, sym)}
@@ -106,9 +113,7 @@ export function Records({ onEditTxn }: { onEditTxn: (id: string) => void }) {
                 ) : (
                   // Nothing was allocated here, so there is no balance to report —
                   // showing a negative one would read as an error.
-                  <span className="text-[11px] text-faint tnum">
-                    已花 {money(r.spent, sym)}
-                  </span>
+                  <span className="text-[11px] text-faint tnum">已花 {money(r.spent, sym)}</span>
                 )}
               </div>
             ))}

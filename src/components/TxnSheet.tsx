@@ -367,7 +367,7 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
           onChange={(e) => setAccountId(e.target.value || null)}
           className="w-full h-10 px-3 rounded-xl bg-surface2 text-muted text-xs outline-none"
         >
-          <option value="">算在哪個分配項目：未指定</option>
+          <option value="">算在：不列入零用錢</option>
           {accounts.map((a) => (
             <option key={a.id} value={a.id}>
               算在：{a.emoji} {a.name}

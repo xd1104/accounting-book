@@ -429,14 +429,14 @@ export function Plan() {
               {walletRows.map((r) => (
                 <div key={r.walletId ?? 'none'} className="flex items-center justify-between text-sm">
                   <span className="text-muted">
-                    {r.emoji} {r.name} {r.allocated > 0 ? '還剩' : '已花'}
+                    {r.emoji} {r.name} {r.allocated > 0 || r.income > 0 ? '還剩' : '已花'}
                   </span>
                   <span
                     className={`tnum font-semibold ${
-                      r.allocated > 0 ? (r.left < 0 ? 'text-bad' : '') : 'text-muted'
+                      r.allocated > 0 || r.income > 0 ? (r.left < 0 ? 'text-bad' : '') : 'text-muted'
                     }`}
                   >
-                    {money(r.allocated > 0 ? r.left : r.spent, sym)}
+                    {money(r.allocated > 0 || r.income > 0 ? r.left : r.spent, sym)}
                   </span>
                 </div>
               ))}

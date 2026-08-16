@@ -59,6 +59,9 @@ export function Home({ onEditTxn }: { onEditTxn: (id: string) => void }) {
         {hasBudget && (
           <div className="mt-3 text-xs text-muted tnum">
             今天已花 {money(s.spentToday, sym)}
+            {s.incomeToday > 0 && (
+              <span className="text-ok"> · 收入 +{money(s.incomeToday, sym)}</span>
+            )}
             {s.plan?.rollover && s.todayBudget > s.dailyAllowance && (
               <span className="text-ok">
                 {' '}

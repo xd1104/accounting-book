@@ -55,14 +55,18 @@ export function txnsInPeriod(data: AppData, month: string): Txn[] {
 }
 
 /**
- * Whether an expense draws down the daily allowance.
- * With no allowance account chosen, every expense counts — that's the sane default
- * before the user has set up a salary plan.
+ * Whether a record moves the allowance — expenses draw it down, income tops it up.
+ * Money coming back in (a friend repaying you, a refund) is spendable again, so
+ * leaving income out made the balance read lower than it really is.
+ * With no allowance account chosen everything counts, which is the sane default
+ * before a salary plan exists.
  */
-function drawsAllowance(t: Txn, allowanceAccountId: string | null): boolean {
-  if (t.type !== 'expense') return false
+function touchesAllowance(t: Txn, allowanceAccountId: string | null): boolean {
+  // No allowance item chosen yet — count everything, which is right before setup.
   if (!allowanceAccountId) return true
-  return t.accountId === allowanceAccountId || t.accountId == null
+  // Leaving the item unset is the way to keep something out of the allowance,
+  // which is what a salary record needs: the plan already accounts for it.
+  return t.accountId === allowanceAccountId
 }
 
 export interface PeriodSummary {
@@ -92,9 +96,14 @@ export interface PeriodSummary {
   todayBudget: number
   /** 今天還剩多少可以花 */
   todayRemaining: number
+  /** 今天花掉的（不扣今天收到的） */
   spentToday: number
+  /** 今天收到、算在零用錢裡的 */
+  incomeToday: number
   /** 本期零用錢已花（含未來日期的預先記錄） */
   spentAllowance: number
+  /** 本期收到、算回零用錢的 */
+  incomeAllowance: number
   allowanceLeft: number
   /** 剩下的錢平均分到剩下的天數 */
   suggestedDaily: number
@@ -140,9 +149,13 @@ export function summarize(data: AppData, month: string, now = today()): PeriodSu
     dailyAllowance = totalDays > 0 ? allowanceTotal / totalDays : 0
   }
 
-  let spentToday = 0
-  let spentBeforeToday = 0
+  // Net figures drive the budget; the gross ones are what the screens label.
+  let netToday = 0
+  let netBeforeToday = 0
   let spentAllowance = 0
+  let incomeAllowance = 0
+  let expenseToday = 0
+  let incomeToday = 0
   let expenseTotal = 0
   let incomeTotal = 0
 
@@ -150,17 +163,25 @@ export function summarize(data: AppData, month: string, now = today()): PeriodSu
     if (t.type === 'income') incomeTotal += t.amount
     else expenseTotal += t.amount
 
-    if (!drawsAllowance(t, allowanceAccountId)) continue
-    spentAllowance += t.amount
-    if (t.date === now) spentToday += t.amount
-    else if (t.date < now) spentBeforeToday += t.amount
+    if (!touchesAllowance(t, allowanceAccountId)) continue
+    const signed = t.type === 'expense' ? t.amount : -t.amount
+    if (t.type === 'expense') spentAllowance += t.amount
+    else incomeAllowance += t.amount
+
+    if (t.date === now) {
+      netToday += signed
+      if (t.type === 'expense') expenseToday += t.amount
+      else incomeToday += t.amount
+    } else if (t.date < now) {
+      netBeforeToday += signed
+    }
   }
 
   const rollover = plan?.rollover ?? true
-  const todayBudget = rollover ? dailyAllowance * dayIndex - spentBeforeToday : dailyAllowance
-  const todayRemaining = todayBudget - spentToday
+  const todayBudget = rollover ? dailyAllowance * dayIndex - netBeforeToday : dailyAllowance
+  const todayRemaining = todayBudget - netToday
 
-  const allowanceLeft = allowanceTotal - spentAllowance
+  const allowanceLeft = allowanceTotal + incomeAllowance - spentAllowance
   const suggestedDaily = daysLeft > 0 ? allowanceLeft / daysLeft : 0
 
   return {
@@ -182,8 +203,10 @@ export function summarize(data: AppData, month: string, now = today()): PeriodSu
     dailyAllowance,
     todayBudget,
     todayRemaining,
-    spentToday,
+    spentToday: expenseToday,
+    incomeToday,
     spentAllowance,
+    incomeAllowance,
     allowanceLeft,
     suggestedDaily,
     expenseTotal,
@@ -202,6 +225,8 @@ export interface WalletBalance {
   allocated: number
   /** 從這裡花掉的零用錢 */
   spent: number
+  /** 收進這裡、算回零用錢的 */
+  income: number
   left: number
 }
 
@@ -227,18 +252,21 @@ export function allowanceByWallet(data: AppData, month: string): WalletBalance[]
   }
 
   const spent = new Map<string | null, number>()
+  const income = new Map<string | null, number>()
   for (const t of txnsInPeriod(data, month)) {
-    if (!drawsAllowance(t, allowanceId)) continue
-    spent.set(t.walletId, (spent.get(t.walletId) ?? 0) + t.amount)
+    if (!touchesAllowance(t, allowanceId)) continue
+    const bucket = t.type === 'expense' ? spent : income
+    bucket.set(t.walletId, (bucket.get(t.walletId) ?? 0) + t.amount)
   }
 
-  const ids = new Set<string | null>([...allocated.keys(), ...spent.keys()])
+  const ids = new Set<string | null>([...allocated.keys(), ...spent.keys(), ...income.keys()])
   const out: WalletBalance[] = []
   for (const id of ids) {
     const w = id ? data.wallets.find((x) => x.id === id) : null
     const a = allocated.get(id) ?? 0
     const s = spent.get(id) ?? 0
-    if (a === 0 && s === 0) continue
+    const inc = income.get(id) ?? 0
+    if (a === 0 && s === 0 && inc === 0) continue
     out.push({
       walletId: id,
       name: w?.name ?? '未指定',
@@ -247,7 +275,8 @@ export function allowanceByWallet(data: AppData, month: string): WalletBalance[]
       kind: w?.kind ?? 'unset',
       allocated: a,
       spent: s,
-      left: a - s,
+      income: inc,
+      left: a + inc - s,
     })
   }
 
