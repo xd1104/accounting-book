@@ -10,6 +10,7 @@ import { Categories } from './pages/Categories'
 import { Wallets } from './pages/Wallets'
 import { Sync } from './pages/Sync'
 import { TxnSheet } from './components/TxnSheet'
+import { UpdateBanner } from './components/UpdateBanner'
 import { IconBack, IconChart, IconGear, IconHome, IconList, IconPlus } from './components/icons'
 
 const TABS = [
@@ -64,6 +65,8 @@ export function App() {
           )}
         </div>
       </header>
+
+      <UpdateBanner />
 
       <main className={isTab ? 'pb-24' : 'pb-8'}>
         {base === '/' && <Home onEditTxn={(id) => push(`/edit/${id}`)} />}

@@ -1,8 +1,13 @@
 // Offline shell for 記帳本.
 // Runtime caching only — Vite hashes asset filenames, so there is no fixed list to precache.
-// Bump this whenever a file keeps its name but changes — the activate handler
-// drops every other cache, which is what forces the new icons to be fetched.
-const CACHE = 'accounting-book-v2'
+//
+// The stamp is substituted at build time (see vite.config.ts). Two things depend
+// on it: the cache name, so activating a new worker drops every older cache; and
+// the bytes of this file, since a browser only treats a service worker as updated
+// when its contents differ. A hand-maintained version number gets forgotten and
+// then updates stop reaching installed phones with no visible symptom.
+const STAMP = '__BUILD_STAMP__'
+const CACHE = `accounting-book-${STAMP}`
 const SHELL = [
   './',
   './index.html',

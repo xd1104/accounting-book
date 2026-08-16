@@ -4,6 +4,14 @@ import type { Theme } from '../store'
 import { downloadBackup, migrate, restorePhotos } from '../lib/storage'
 import { storageEstimate } from '../lib/photos'
 import { backupStatus, cloudState, isPersisted, isStandalone } from '../lib/persist'
+import {
+  APP_VERSION,
+  applyUpdate,
+  checkForUpdate,
+  isUpdateReady,
+  subscribeUpdate,
+  updatesSupported,
+} from '../lib/appUpdate'
 import { push } from '../router'
 import { IconChevronR } from '../components/icons'
 
@@ -17,10 +25,26 @@ export function Settings() {
   const [persisted, setPersisted] = useState<boolean | null>(null)
   const standalone = isStandalone()
 
+  const [updateReady, setUpdateReady] = useState(isUpdateReady)
+  const [checking, setChecking] = useState(false)
+  const [verMsg, setVerMsg] = useState('')
+
   useEffect(() => {
     storageEstimate().then(setUsage)
     isPersisted().then(setPersisted)
   }, [data])
+
+  useEffect(() => subscribeUpdate(setUpdateReady), [])
+
+  const doCheckUpdate = async () => {
+    setChecking(true)
+    setVerMsg('')
+    const found = await checkForUpdate()
+    setChecking(false)
+    // When one is found the button is replaced by 立即更新, so only the
+    // negative answer needs saying out loud.
+    if (!found) setVerMsg('已經是最新版了。')
+  }
 
   const photoCount = data.txns.reduce((n, t) => n + (t.photos?.length ?? 0), 0)
   const cloud = cloudState(sync.status, !!sync.config)
@@ -226,6 +250,38 @@ export function Settings() {
         />
       </Group>
 
+      <Group title="版本">
+        <Row label="目前跑的版本" hint="這是這台裝置實際跑的版本，不一定是最新的">
+          <span className="text-sm tnum text-muted">{APP_VERSION}</span>
+        </Row>
+        <div className="px-3 pb-3">
+          {updateReady ? (
+            <>
+              <div className="px-1 pb-2 text-xs text-brand font-semibold">
+                🎉 新版本已經下載好了，重新載入就會換過去
+              </div>
+              <button
+                onClick={applyUpdate}
+                className="w-full h-11 rounded-2xl bg-brand text-white text-sm font-semibold active:scale-[0.98] transition"
+              >
+                立即更新
+              </button>
+            </>
+          ) : (
+            <>
+              {verMsg && <div className="px-1 pb-2 text-xs text-muted">{verMsg}</div>}
+              <button
+                onClick={doCheckUpdate}
+                disabled={checking || !updatesSupported()}
+                className="w-full h-11 rounded-2xl bg-surface2 text-ink text-sm font-semibold active:scale-[0.98] transition disabled:opacity-50"
+              >
+                {checking ? '檢查中…' : '檢查有沒有新版本'}
+              </button>
+            </>
+          )}
+        </div>
+      </Group>
+
       <Group title="其他">
         <Row label="安裝到手機" hint="用瀏覽器開啟後，選「加入主畫面」就會變成 App">
           <span />
@@ -245,7 +301,7 @@ export function Settings() {
         </div>
       </Group>
 
-      <div className="text-center text-xs text-faint pt-2">記帳本 v1.0</div>
+      <div className="text-center text-xs text-faint pt-2">記帳本 · {APP_VERSION}</div>
     </div>
   )
 }

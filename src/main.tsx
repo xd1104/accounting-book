@@ -4,6 +4,7 @@ import './index.css'
 import { App } from './App'
 import { StoreProvider } from './store'
 import { requestPersistence } from './lib/persist'
+import { registerServiceWorker, watchForUpdates } from './lib/appUpdate'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -16,10 +17,7 @@ createRoot(document.getElementById('root')!).render(
 // Ask up front, so the browser is less likely to evict the ledger on its own.
 requestPersistence()
 
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {
-      // Offline support is a bonus — the app works fine without it.
-    })
-  })
-}
+window.addEventListener('load', () => {
+  registerServiceWorker(`${import.meta.env.BASE_URL}sw.js`)
+  watchForUpdates()
+})

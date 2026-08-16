@@ -31,6 +31,9 @@
 - **記帳週期** — 可設定每月起算日，發薪日不是 1 號也能對齊
 - **深色模式** — 跟隨系統或手動切換
 - **PWA** — 手機「加入主畫面」後就像原生 App，離線也能開
+- **版本更新** — 改版之後手機不會自己換新版（PWA 的殼是 cache-first）。
+  偵測到新版會在首頁跳一條「有新版本了 · 立即更新」，
+  「設定 → 版本」也能看目前跑的版本、手動按「檢查有沒有新版本」
 
 ## 雲端同步（選用）
 
@@ -109,6 +112,10 @@ npm run preview  # 預覽 build 結果
 第一次使用需要先到 **Settings → Pages → Build and deployment → Source** 選擇 **GitHub Actions**。
 
 網址會是 `https://<帳號>.github.io/accounting-book/`。
+
+版本號由 build 時的 commit 自動產生（`日期-短 sha`），同時寫進 JS 與 `sw.js` 的 cache 名稱，
+**不需要手動 +1**。改前端忘了改版本號 → 瀏覽器看不出 service worker 有變 → 手機永遠停在舊版，
+這個坑用衍生版本號直接消掉。
 
 ## 技術
 
