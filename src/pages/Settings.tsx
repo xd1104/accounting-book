@@ -8,7 +8,7 @@ import { push } from '../router'
 import { IconChevronR } from '../components/icons'
 
 export function Settings() {
-  const { data, updateSettings, replaceAll, resetAll, theme, setTheme } = useStore()
+  const { data, updateSettings, replaceAll, resetAll, theme, setTheme, sync } = useStore()
   const fileRef = useRef<HTMLInputElement>(null)
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
@@ -121,6 +121,22 @@ export function Settings() {
           label="分類"
           hint={`${data.categories.filter((c) => !c.archived).length} 個`}
           onClick={() => push('/categories')}
+        />
+      </Group>
+
+      <Group title="雲端同步">
+        <NavRow
+          label="雲端同步"
+          hint={
+            sync.status === 'off'
+              ? '未設定 — 資料只在這台裝置'
+              : sync.status === 'error'
+                ? '同步失敗'
+                : sync.status === 'conflict'
+                  ? '需要處理衝突'
+                  : `${sync.config?.owner}/${sync.config?.repo}`
+          }
+          onClick={() => push('/sync')}
         />
       </Group>
 

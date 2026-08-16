@@ -8,6 +8,7 @@ import { Plan } from './pages/Plan'
 import { Accounts } from './pages/Accounts'
 import { Categories } from './pages/Categories'
 import { Wallets } from './pages/Wallets'
+import { Sync } from './pages/Sync'
 import { TxnSheet } from './components/TxnSheet'
 import { IconBack, IconChart, IconGear, IconHome, IconList, IconPlus } from './components/icons'
 
@@ -23,6 +24,7 @@ const SUB_PAGES: Record<string, string> = {
   '/accounts': '分配項目',
   '/wallets': '存放處',
   '/categories': '分類',
+  '/sync': '雲端同步',
 }
 
 export function App() {
@@ -72,6 +74,7 @@ export function App() {
         {base === '/accounts' && <Accounts />}
         {base === '/wallets' && <Wallets />}
         {base === '/categories' && <Categories />}
+        {base === '/sync' && <Sync />}
       </main>
 
       {isTab && (

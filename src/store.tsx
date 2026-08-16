@@ -5,6 +5,8 @@ import { LocalStorageAdapter } from './lib/storage'
 import type { StorageAdapter } from './lib/storage'
 import { emptyData, uid } from './lib/defaults'
 import { deletePhotos, pruneOrphans } from './lib/photos'
+import type { SyncConfig } from './lib/sync'
+import { loadSyncConfig, resolveConflict, saveSyncConfig, syncOnce, syncPhotos } from './lib/sync'
 
 export type Theme = 'system' | 'light' | 'dark'
 
@@ -35,6 +37,23 @@ interface Store {
   updateSettings: (patch: Partial<Settings>) => void
   replaceAll: (data: AppData) => void
   resetAll: () => void
+
+  sync: SyncInfo
+  configureSync: (cfg: SyncConfig) => void
+  disconnectSync: () => void
+  syncNow: () => Promise<void>
+  resolveSync: (keep: 'local' | 'remote') => Promise<void>
+}
+
+export type SyncStatus = 'off' | 'idle' | 'syncing' | 'error' | 'conflict'
+
+export interface SyncInfo {
+  status: SyncStatus
+  config: SyncConfig | null
+  lastSyncedAt: string | null
+  error: string | null
+  detail: string | null
+  conflict: { remote: AppData; remoteSha: string } | null
 }
 
 const Ctx = createContext<Store | null>(null)
@@ -57,13 +76,18 @@ export function StoreProvider({
   const [ready, setReady] = useState(false)
   const [theme, setThemeState] = useState<Theme>(() => readTheme())
   const dirty = useRef(false)
+  /** False until this device has stored something of its own — see syncOnce. */
+  const hasLocalHistory = useRef(false)
 
   // Initial load
   useEffect(() => {
     let alive = true
     adapter.load().then((loaded) => {
       if (!alive) return
-      if (loaded) setData(loaded)
+      if (loaded) {
+        setData(loaded)
+        hasLocalHistory.current = true
+      }
       setReady(true)
     })
     return () => {
@@ -96,13 +120,114 @@ export function StoreProvider({
 
   const mutate = useCallback((fn: (d: AppData) => AppData) => {
     dirty.current = true
+    hasLocalHistory.current = true
     setData((prev) => ({ ...fn(prev), updatedAt: new Date().toISOString() }))
+  }, [])
+
+  /** Adopt data verbatim — used for pulled data, whose updatedAt must survive
+   *  so the next sync does not mistake it for a fresh local edit. */
+  const adopt = useCallback((next: AppData) => {
+    dirty.current = true
+    hasLocalHistory.current = true
+    setData(next)
   }, [])
 
   const setTheme = useCallback((t: Theme) => {
     localStorage.setItem(THEME_KEY, t)
     setThemeState(t)
   }, [])
+
+  // ---- sync ----
+  const [sync, setSync] = useState<SyncInfo>(() => {
+    const cfg = loadSyncConfig()
+    return {
+      status: cfg ? 'idle' : 'off',
+      config: cfg,
+      lastSyncedAt: cfg?.lastSyncedAt ?? null,
+      error: null,
+      detail: null,
+      conflict: null,
+    }
+  })
+  /** Latest data, readable from async callbacks without stale closures. */
+  const dataRef = useRef(data)
+  dataRef.current = data
+  const syncing = useRef(false)
+
+  const runSync = useCallback(async () => {
+    const cfg = loadSyncConfig()
+    if (!cfg || syncing.current) return
+    syncing.current = true
+    setSync((s) => ({ ...s, status: 'syncing', error: null }))
+    try {
+      const out = await syncOnce(cfg, dataRef.current, hasLocalHistory.current)
+      if (out.action === 'conflict') {
+        setSync((s) => ({
+          ...s,
+          status: 'conflict',
+          conflict: { remote: out.remote, remoteSha: out.remoteSha },
+        }))
+        return
+      }
+      if (out.action === 'pulled') adopt(out.data)
+
+      const photos = await syncPhotos(cfg, out.action === 'pulled' ? out.data : dataRef.current)
+      const saved = loadSyncConfig()
+      setSync((s) => ({
+        ...s,
+        status: 'idle',
+        config: saved,
+        lastSyncedAt: saved?.lastSyncedAt ?? null,
+        conflict: null,
+        error: null,
+        detail:
+          photos.uploaded || photos.downloaded
+            ? `照片：上傳 ${photos.uploaded}、下載 ${photos.downloaded}`
+            : null,
+      }))
+    } catch (e) {
+      setSync((s) => ({ ...s, status: 'error', error: (e as Error).message || '同步失敗' }))
+    } finally {
+      syncing.current = false
+    }
+  }, [adopt])
+
+  // Pull once on startup so a device that was edited elsewhere catches up.
+  useEffect(() => {
+    if (ready && loadSyncConfig()) runSync()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready])
+
+  /**
+   * Also pull when the app comes back to the foreground — a phone can keep this
+   * page alive for days, and without this it would never notice edits made on
+   * the computer in the meantime.
+   */
+  useEffect(() => {
+    if (!ready) return
+    let last = 0
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return
+      if (!loadSyncConfig()) return
+      if (Date.now() - last < 30_000) return
+      last = Date.now()
+      runSync()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+    }
+  }, [ready, runSync])
+
+  // Push edits, debounced — typing an amount should not fire a commit per digit.
+  useEffect(() => {
+    if (!ready || !dirty.current || !loadSyncConfig()) return
+    const id = setTimeout(runSync, 4000)
+    return () => clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, ready])
 
   const value = useMemo<Store>(() => {
     const nextOrder = (xs: Array<{ order: number }>) =>
@@ -228,8 +353,55 @@ export function StoreProvider({
         pruneOrphans(new Set()).catch(() => {})
         mutate(() => emptyData())
       },
+
+      sync,
+      configureSync(cfg) {
+        saveSyncConfig(cfg)
+        setSync({
+          status: 'idle',
+          config: cfg,
+          lastSyncedAt: cfg.lastSyncedAt,
+          error: null,
+          detail: null,
+          conflict: null,
+        })
+        runSync()
+      },
+      disconnectSync() {
+        saveSyncConfig(null)
+        setSync({
+          status: 'off',
+          config: null,
+          lastSyncedAt: null,
+          error: null,
+          detail: null,
+          conflict: null,
+        })
+      },
+      syncNow: runSync,
+      async resolveSync(keep) {
+        const cfg = loadSyncConfig()
+        const c = sync.conflict
+        if (!cfg || !c) return
+        setSync((s) => ({ ...s, status: 'syncing' }))
+        try {
+          const winner = await resolveConflict(cfg, keep, dataRef.current, c.remote, c.remoteSha)
+          adopt(winner)
+          const saved = loadSyncConfig()
+          setSync((s) => ({
+            ...s,
+            status: 'idle',
+            config: saved,
+            lastSyncedAt: saved?.lastSyncedAt ?? null,
+            conflict: null,
+            error: null,
+          }))
+        } catch (e) {
+          setSync((s) => ({ ...s, status: 'error', error: (e as Error).message }))
+        }
+      },
     }
-  }, [data, ready, theme, setTheme, mutate])
+  }, [data, ready, theme, setTheme, mutate, adopt, sync, runSync])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
