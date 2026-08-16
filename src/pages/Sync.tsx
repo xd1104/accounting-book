@@ -78,10 +78,18 @@ export function Sync() {
           </div>
         </div>
 
+        {/* A failed resolution otherwise looks like the button did nothing. */}
+        {sync.error && (
+          <div className="bg-bad/12 rounded-2xl px-4 py-3 text-xs text-bad">
+            處理失敗：{sync.error}
+          </div>
+        )}
+
         <div className="grid gap-2">
           <button
             onClick={() => resolveSync('local')}
-            className="bg-surface rounded-3xl p-4 text-left active:scale-[0.99] transition"
+            disabled={sync.status === 'syncing'}
+            className="bg-surface rounded-3xl p-4 text-left active:scale-[0.99] transition disabled:opacity-50"
           >
             <div className="font-semibold text-sm">用這台裝置的版本</div>
             <div className="text-xs text-muted mt-0.5 tnum">
@@ -90,7 +98,8 @@ export function Sync() {
           </button>
           <button
             onClick={() => resolveSync('remote')}
-            className="bg-surface rounded-3xl p-4 text-left active:scale-[0.99] transition"
+            disabled={sync.status === 'syncing'}
+            className="bg-surface rounded-3xl p-4 text-left active:scale-[0.99] transition disabled:opacity-50"
           >
             <div className="font-semibold text-sm">用雲端的版本</div>
             <div className="text-xs text-muted mt-0.5 tnum">

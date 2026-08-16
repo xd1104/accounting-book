@@ -87,14 +87,6 @@ export const IconCamera = ({ className = base }: P) => (
   </svg>
 )
 
-export const IconPhoto = ({ className = base }: P) => (
-  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="5" width="18" height="14" rx="2" />
-    <circle cx="8.5" cy="10" r="1.5" />
-    <path d="M21 15.5 16.5 11 6 19" />
-  </svg>
-)
-
 export const IconBackspace = ({ className = base }: P) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <path d="M9 5h11a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H9l-6-7 6-7Z" />

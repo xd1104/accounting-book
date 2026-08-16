@@ -5,11 +5,6 @@ export function money(n: number, symbol = '$'): string {
   return `${sign}${symbol}${Math.abs(v).toLocaleString('en-US')}`
 }
 
-/** Without the currency symbol, for tight spots like chart axes. */
-export function num(n: number): string {
-  return Math.round(n).toLocaleString('en-US')
-}
-
 /** Compact form for axis labels: 12.3k */
 export function compact(n: number): string {
   const a = Math.abs(n)

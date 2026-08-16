@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useStore } from '../store'
 import type { Theme } from '../store'
-import { downloadBackup, migrate, restorePhotos } from '../lib/storage'
+import { downloadBackup, looksLikeBackup, migrate, restorePhotos } from '../lib/storage'
 import { storageEstimate } from '../lib/photos'
 import { backupStatus, cloudState, isPersisted, isStandalone } from '../lib/persist'
 import {
@@ -18,7 +18,9 @@ import { IconChevronR } from '../components/icons'
 export function Settings() {
   const { data, updateSettings, replaceAll, resetAll, theme, setTheme, sync } = useStore()
   const fileRef = useRef<HTMLInputElement>(null)
-  const [msg, setMsg] = useState('')
+  // Failures share the message slot with successes, so they need to not be green.
+  const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null)
+  const say = (text: string, bad = false) => setMsg({ text, bad })
   const [busy, setBusy] = useState(false)
   const [usage, setUsage] = useState<{ usedMB: number; quotaMB: number } | null>(null)
 
@@ -52,13 +54,13 @@ export function Settings() {
 
   const doExport = async () => {
     setBusy(true)
-    setMsg('')
+    setMsg(null)
     try {
       await downloadBackup(data)
       updateSettings({ lastBackupAt: new Date().toISOString() })
-      setMsg(photoCount > 0 ? `已匯出（含 ${photoCount} 張照片，檔案會比較大）` : '已匯出')
+      say(photoCount > 0 ? `已匯出（含 ${photoCount} 張照片，檔案會比較大）` : '已匯出')
     } catch {
-      setMsg('匯出失敗')
+      say('匯出失敗', true)
     } finally {
       setBusy(false)
     }
@@ -68,14 +70,19 @@ export function Settings() {
     setBusy(true)
     try {
       const parsed = JSON.parse(await file.text())
+      if (!looksLikeBackup(parsed)) {
+        say('這不是記帳本的備份檔，沒有做任何事', true)
+        return
+      }
       const next = migrate(parsed)
       const n = next.txns.length
-      if (!confirm(`匯入 ${n} 筆記錄？這會覆蓋目前這台裝置上的所有資料。`)) return
+      const have = data.txns.length
+      if (!confirm(`匯入 ${n} 筆記錄，覆蓋這台裝置目前的 ${have} 筆。要繼續嗎？`)) return
       const restored = await restorePhotos(parsed)
       replaceAll(next)
-      setMsg(`已匯入 ${n} 筆記錄${restored ? `、${restored} 張照片` : ''}`)
+      say(`已匯入 ${n} 筆記錄${restored ? `、${restored} 張照片` : ''}`)
     } catch {
-      setMsg('檔案讀不到或格式不對')
+      say('檔案讀不到或格式不對', true)
     } finally {
       setBusy(false)
     }
@@ -236,7 +243,9 @@ export function Settings() {
             匯入備份
           </button>
         </div>
-        {msg && <div className="px-4 pb-3 text-xs text-ok">{msg}</div>}
+        {msg && (
+          <div className={`px-4 pb-3 text-xs ${msg.bad ? 'text-bad' : 'text-ok'}`}>{msg.text}</div>
+        )}
         <input
           ref={fileRef}
           type="file"
@@ -291,7 +300,7 @@ export function Settings() {
             onClick={() => {
               if (confirm('清除所有資料？這無法復原，建議先匯出備份。')) {
                 resetAll()
-                setMsg('已清除')
+                say('已清除')
               }
             }}
             className="w-full h-11 rounded-2xl bg-bad/12 text-bad text-sm font-semibold active:scale-[0.98] transition"

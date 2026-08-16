@@ -23,9 +23,3 @@ export function unlockScroll(): void {
   locks = Math.max(0, locks - 1)
   if (locks === 0) document.body.style.overflow = saved
 }
-
-/** Escape hatch: drop every lock, e.g. if a route change tore sheets down abruptly. */
-export function releaseAllScrollLocks(): void {
-  locks = 0
-  document.body.style.overflow = saved
-}

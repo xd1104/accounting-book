@@ -153,10 +153,17 @@ export function StoreProvider({
   const dataRef = useRef(data)
   dataRef.current = data
   const syncing = useRef(false)
+  /** Mirrors sync.status for the async callbacks, which cannot read state directly. */
+  const syncStatus = useRef(sync.status)
+  syncStatus.current = sync.status
 
   const runSync = useCallback(async () => {
     const cfg = loadSyncConfig()
     if (!cfg || syncing.current) return
+    // An unresolved conflict is waiting on the user, and every retry re-reads the
+    // whole repo only to reach the same answer. Editing while the question is on
+    // screen would otherwise fire one full read every few seconds.
+    if (syncStatus.current === 'conflict') return
     syncing.current = true
     setSync((s) => ({ ...s, status: 'syncing', error: null }))
     try {

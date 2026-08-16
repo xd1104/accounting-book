@@ -4,12 +4,12 @@ import { DEFAULT_SETTINGS, defaultAccounts, defaultWallets, emptyData } from './
 import { blobToDataURL, dataURLToBlob, getPhoto, putPhoto } from './photos'
 
 /**
- * Everything above this layer only knows about StorageAdapter, so a cloud backend
- * (e.g. a private GitHub repo via the API) can be added later without touching the UI.
+ * Where the ledger lives on this device. The cloud copy is not another
+ * implementation of this — sync (see sync.ts) works on top of the local one,
+ * pushing and pulling whatever is stored here, so this stays the single source
+ * the UI reads and writes.
  */
 export interface StorageAdapter {
-  id: string
-  label: string
   load(): Promise<AppData | null>
   save(data: AppData): Promise<void>
 }
@@ -17,9 +17,6 @@ export interface StorageAdapter {
 const KEY = 'accounting-book/data/v1'
 
 export class LocalStorageAdapter implements StorageAdapter {
-  id = 'local'
-  label = '此裝置'
-
   async load(): Promise<AppData | null> {
     try {
       const raw = localStorage.getItem(KEY)
@@ -72,6 +69,21 @@ export function migrate(raw: unknown): AppData {
 /** A backup carries the photos too — without them it would silently lose data. */
 export interface Backup extends AppData {
   photoData?: Record<string, string>
+}
+
+/**
+ * Whether a parsed file is actually one of our backups.
+ *
+ * `migrate` is deliberately forgiving so a partial or hand-edited payload still
+ * loads — but that makes it answer "sure, here is an empty ledger" for literally
+ * any JSON. Importing the wrong file would then wipe everything and report
+ * success. Import has to check first; loading can stay lenient.
+ */
+export function looksLikeBackup(raw: unknown): raw is Backup {
+  if (!raw || typeof raw !== 'object') return false
+  const d = raw as Partial<Backup>
+  // Every backup this app has written carries all three, an empty ledger included.
+  return typeof d.version === 'number' && Array.isArray(d.txns) && Array.isArray(d.categories)
 }
 
 export async function buildBackup(data: AppData): Promise<Backup> {
