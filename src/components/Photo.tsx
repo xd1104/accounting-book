@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getPhoto } from '../lib/photos'
 import { IconX } from './icons'
+import { lockScroll, unlockScroll } from '../lib/scrollLock'
 
 /** Resolve a stored photo id to an object URL, revoking it on unmount. */
 export function usePhotoURL(id: string | null): string | null {
@@ -63,6 +64,13 @@ export function PhotoThumb({
 /** Full-screen viewer, tap anywhere to close. */
 export function PhotoViewer({ id, onClose }: { id: string | null; onClose: () => void }) {
   const url = usePhotoURL(id)
+
+  useEffect(() => {
+    if (!id) return
+    lockScroll()
+    return unlockScroll
+  }, [id])
+
   if (!id) return null
   return (
     <div

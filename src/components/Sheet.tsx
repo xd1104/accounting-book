@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { IconX } from './icons'
+import { lockScroll, unlockScroll } from '../lib/scrollLock'
 
 interface Props {
   open: boolean
@@ -17,11 +18,10 @@ export function Sheet({ open, onClose, title, children, full, footer }: Props) {
     if (!open) return
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     document.addEventListener('keydown', onKey)
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    lockScroll()
     return () => {
       document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = prev
+      unlockScroll()
     }
   }, [open, onClose])
 
