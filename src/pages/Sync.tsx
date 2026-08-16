@@ -65,10 +65,16 @@ export function Sync() {
       <div className="px-4 pb-6 space-y-4">
         <div className="bg-warn/12 rounded-3xl p-4">
           <div className="font-semibold text-warn mb-1">兩邊都有新的修改</div>
+          {/* The two sides are not equally recoverable, and saying otherwise is
+              exactly the reassurance that would cost someone their unsynced edits. */}
           <p className="text-xs text-muted leading-relaxed">
             這台裝置和雲端改到了同一個月份，沒辦法自動合併，請選一邊留下。
             <br />
-            另一邊不會真的消失 — 雲端每次同步都是一次 commit，之後還能從 GitHub 的歷史紀錄找回來。
+            選<b className="text-ink">「用這台裝置的版本」</b>被蓋掉的雲端那份救得回來 —
+            每次同步都是一次 commit，翻 GitHub 的歷史紀錄就有。
+            <br />
+            選<b className="text-ink">「用雲端的版本」</b>則會蓋掉這台還沒上傳的修改，
+            <b className="text-warn">那些沒有備份</b>。不確定的話先去「設定 → 匯出備份」。
           </p>
           <div className="mt-2 text-[11px] text-muted">
             衝突的檔案：
