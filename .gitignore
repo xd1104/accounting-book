@@ -3,3 +3,6 @@ dist
 .DS_Store
 *.local
 .vite
+
+# icon generator scratch
+public/.icon-tmp.*

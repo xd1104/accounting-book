@@ -1,7 +1,16 @@
 // Offline shell for 記帳本.
 // Runtime caching only — Vite hashes asset filenames, so there is no fixed list to precache.
-const CACHE = 'accounting-book-v1'
-const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png']
+// Bump this whenever a file keeps its name but changes — the activate handler
+// drops every other cache, which is what forces the new icons to be fetched.
+const CACHE = 'accounting-book-v2'
+const SHELL = [
+  './',
+  './index.html',
+  './manifest.webmanifest',
+  './icon.svg',
+  './icon-192.png',
+  './icon-512.png',
+]
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
