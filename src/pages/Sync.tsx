@@ -31,7 +31,7 @@ export function Sync() {
         repo: repo.trim(),
         branch: info.defaultBranch,
         token: token.trim(),
-        lastSha: null,
+        shas: {},
         lastSyncedAt: null,
       })
       setToken('')
@@ -48,10 +48,16 @@ export function Sync() {
         <div className="bg-warn/12 rounded-3xl p-4">
           <div className="font-semibold text-warn mb-1">兩邊都有新的修改</div>
           <p className="text-xs text-muted leading-relaxed">
-            這台裝置和雲端在上次同步之後都被改過，沒辦法自動合併，請選一邊留下。
+            這台裝置和雲端改到了同一個月份，沒辦法自動合併，請選一邊留下。
             <br />
             另一邊不會真的消失 — 雲端每次同步都是一次 commit，之後還能從 GitHub 的歷史紀錄找回來。
           </p>
+          <div className="mt-2 text-[11px] text-muted">
+            衝突的檔案：
+            {sync.conflict.paths
+              .map((p) => (p.endsWith('meta.md') ? '設定' : p.split('/').pop()?.replace('.md', '')))
+              .join('、')}
+          </div>
         </div>
 
         <div className="grid gap-2">

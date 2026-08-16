@@ -5,6 +5,11 @@ on:
     branches:
       - main
       - 'claude/**'
+    # Sync writes the ledger into data/ on this same repo. Those commits change
+    # no code, so rebuilding and redeploying for each one would just burn
+    # Actions minutes every time an expense is recorded.
+    paths-ignore:
+      - 'data/**'
   workflow_dispatch:
 
 permissions:

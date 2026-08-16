@@ -53,7 +53,7 @@ export interface SyncInfo {
   lastSyncedAt: string | null
   error: string | null
   detail: string | null
-  conflict: { remote: AppData; remoteSha: string } | null
+  conflict: { remote: AppData; paths: string[] } | null
 }
 
 const Ctx = createContext<Store | null>(null)
@@ -165,13 +165,16 @@ export function StoreProvider({
         setSync((s) => ({
           ...s,
           status: 'conflict',
-          conflict: { remote: out.remote, remoteSha: out.remoteSha },
+          conflict: { remote: out.remote, paths: out.paths },
         }))
         return
       }
-      if (out.action === 'pulled') adopt(out.data)
+      if (out.action === 'pulled' || out.action === 'merged') adopt(out.data)
 
-      const photos = await syncPhotos(cfg, out.action === 'pulled' ? out.data : dataRef.current)
+      const photos = await syncPhotos(
+        cfg,
+        out.action === 'pulled' || out.action === 'merged' ? out.data : dataRef.current,
+      )
       const saved = loadSyncConfig()
       setSync((s) => ({
         ...s,
@@ -385,7 +388,7 @@ export function StoreProvider({
         if (!cfg || !c) return
         setSync((s) => ({ ...s, status: 'syncing' }))
         try {
-          const winner = await resolveConflict(cfg, keep, dataRef.current, c.remote, c.remoteSha)
+          const winner = await resolveConflict(cfg, keep, dataRef.current, c.remote)
           adopt(winner)
           const saved = loadSyncConfig()
           setSync((s) => ({

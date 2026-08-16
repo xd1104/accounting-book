@@ -34,17 +34,47 @@
 
 ## 雲端同步（選用）
 
-「設定 → 雲端同步」可以把資料存到你自己的**私人 GitHub repo**：
+「設定 → 雲端同步」可以把資料存進一個 GitHub repo（這個 repo 或另開一個都可以）：
 
 - 手機和電腦連同一個 repo 就是同一份資料
 - 記錄有變動會自動上傳（延遲數秒），開啟或切回 App 時會自動下載
 - 每次同步都是一次 commit，改錯或誤刪可以從 GitHub 的歷史紀錄復原
-- 照片會以個別檔案存進 `photos/`，一起同步
-- 兩邊在上次同步後都被改過時會**停下來問你要留哪一邊**，不會默默覆蓋
+- 兩邊改到**同一個月份**時才會停下來問你留哪一邊，不會默默覆蓋
 
 需要一組 [fine-grained token](https://github.com/settings/personal-access-tokens/new)，
-只給那一個 repo 的 Contents 讀寫權限即可。Token 只存在瀏覽器本機，
+只給那個 repo 的 Contents 讀寫權限即可。Token 只存在瀏覽器本機，
 不會寫進 repo，也不會出現在匯出的備份檔裡。
+
+> ⚠️ 存進**公開** repo 的話，帳目所有人都看得到。要私密就另開一個 Private repo。
+
+### 資料長什麼樣
+
+不是一包大 JSON，而是拆成一個月一個檔的 markdown，人看得懂、`git diff` 也乾淨：
+
+```
+data/meta.md               設定、存放處、分配項目、分類
+data/months/2026-08.md     該月的薪水分配 ＋ 所有記錄
+data/photos/<id>.jpg       照片
+```
+
+```markdown
+---
+month: "2026-08"
+income: 72000
+rollover: true
+---
+
+## 分配
+
+- {"accountId":"a1","amount":30000,"done":true}
+
+## 記錄
+
+- {"id":"t1","type":"expense","amount":320,"categoryId":"c1","walletId":"w1","note":"滷肉飯","date":"2026-08-16"}
+```
+
+分檔的好處是**同步以檔案為單位**：手機改八月、電腦改七月，兩邊各自上傳、自動合併，
+不會因為動到同一包資料就互相蓋掉。
 
 ## 資料存在哪
 

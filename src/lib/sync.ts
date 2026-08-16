@@ -1,17 +1,27 @@
 import type { AppData } from './types'
-import { migrate } from './storage'
 import { getPhoto, putPhoto } from './photos'
 import type { GitHubConfig } from './github'
 import { blobToBase64, encodeText, getBlob, getFile, listFolder, putFile } from './github'
+import {
+  META_PATH,
+  MONTH_DIR,
+  PHOTO_DIR,
+  assemble,
+  monthKeys,
+  monthPath,
+  monthTxns,
+  parseMeta,
+  parseMonth,
+  serializeMeta,
+  serializeMonth,
+} from './mdstore'
+import type { Meta, MonthFile } from './mdstore'
 
-const DATA_PATH = 'data.json'
-const PHOTO_DIR = 'photos'
 const CONFIG_KEY = 'accounting-book/sync/v1'
 
 export interface SyncConfig extends GitHubConfig {
-  /** sha of the data.json we last pulled or pushed */
-  lastSha: string | null
-  /** data.updatedAt at that moment, used to tell "local changed" from "unchanged" */
+  /** path -> sha of the version this device last read or wrote */
+  shas: Record<string, string>
   lastSyncedAt: string | null
 }
 
@@ -22,7 +32,9 @@ export interface SyncConfig extends GitHubConfig {
 export function loadSyncConfig(): SyncConfig | null {
   try {
     const raw = localStorage.getItem(CONFIG_KEY)
-    return raw ? (JSON.parse(raw) as SyncConfig) : null
+    if (!raw) return null
+    const cfg = JSON.parse(raw) as SyncConfig
+    return { ...cfg, shas: cfg.shas ?? {} }
   } catch {
     return null
   }
@@ -34,83 +46,227 @@ export function saveSyncConfig(cfg: SyncConfig | null): void {
 }
 
 export type SyncOutcome =
-  | { action: 'pushed' }
+  | { action: 'pushed'; files: number }
   | { action: 'pulled'; data: AppData }
+  | { action: 'merged'; data: AppData; files: number }
   | { action: 'inSync' }
-  /** Both sides moved since the last sync — only the user can say which wins. */
-  | { action: 'conflict'; remote: AppData; remoteSha: string }
+  /** The same file moved on both sides — only the user can say which wins. */
+  | { action: 'conflict'; paths: string[]; remote: AppData }
+
+interface RemoteSnapshot {
+  meta: Meta | null
+  metaSha: string | null
+  months: MonthFile[]
+  monthShas: Record<string, string>
+  empty: boolean
+}
+
+async function readRemote(cfg: SyncConfig): Promise<RemoteSnapshot> {
+  const metaFile = await getFile(cfg, META_PATH)
+  const names = await listFolder(cfg, MONTH_DIR)
+  const months: MonthFile[] = []
+  const monthShas: Record<string, string> = {}
+
+  for (const name of names) {
+    if (!name.endsWith('.md')) continue
+    const month = name.slice(0, -3)
+    const f = await getFile(cfg, monthPath(month))
+    if (!f) continue
+    months.push(parseMonth(month, f.text))
+    monthShas[monthPath(month)] = f.sha
+  }
+
+  return {
+    meta: metaFile ? parseMeta(metaFile.text) : null,
+    metaSha: metaFile?.sha ?? null,
+    months,
+    monthShas,
+    empty: !metaFile && names.length === 0,
+  }
+}
 
 /**
- * One round of sync. Pull first so the sha is fresh, then decide:
- * remote-only change wins, local-only change is pushed, both changed is a conflict.
+ * One round of sync, file by file.
+ *
+ * Splitting the ledger by month means "who changed what" is answered per file:
+ * a month only the remote touched is pulled, a month only this device touched is
+ * pushed, and a conflict is limited to the months that genuinely moved on both
+ * sides instead of the whole ledger.
  *
  * `hasLocalHistory` is false on a device that has never stored anything — its
  * data is just the seeded defaults. Without that distinction a fresh phone would
- * look "locally modified" and every first sync would land in a bogus conflict.
+ * look "locally modified" and every first sync would open with a bogus conflict.
  */
 export async function syncOnce(
   cfg: SyncConfig,
   local: AppData,
   hasLocalHistory: boolean,
 ): Promise<SyncOutcome> {
-  const remote = await getFile(cfg, DATA_PATH)
+  const remote = await readRemote(cfg)
 
-  if (!remote) {
-    const sha = await putFile(cfg, DATA_PATH, encodeText(serialise(local)), commitMessage(local))
-    saveSyncConfig({ ...cfg, lastSha: sha, lastSyncedAt: local.updatedAt })
-    return { action: 'pushed' }
+  // Nothing there yet — seed the repo from this device.
+  if (remote.empty) {
+    const written = await pushAll(cfg, local, {})
+    saveSyncConfig({ ...cfg, shas: written, lastSyncedAt: local.updatedAt })
+    return { action: 'pushed', files: Object.keys(written).length }
   }
 
-  const remoteChanged = remote.sha !== cfg.lastSha
-  const localChanged =
-    hasLocalHistory && (!cfg.lastSyncedAt || local.updatedAt > cfg.lastSyncedAt)
+  const remoteData = assemble(
+    remote.meta ?? parseMeta(serializeMeta(local)),
+    remote.months,
+  )
 
-  if (remoteChanged && localChanged) {
-    return { action: 'conflict', remote: migrate(JSON.parse(remote.text)), remoteSha: remote.sha }
+  // A device with nothing of its own just takes what is there. Record the
+  // adopted bodies too, or the next sync would see every file as locally
+  // modified and push the whole ledger straight back.
+  if (!hasLocalHistory) {
+    const shas = { ...remote.monthShas }
+    if (remote.metaSha) shas[META_PATH] = remote.metaSha
+    for (const [path, body] of Object.entries(fileMap(remoteData))) shas[`${path}#local`] = body
+    saveSyncConfig({ ...cfg, shas, lastSyncedAt: remoteData.updatedAt })
+    return { action: 'pulled', data: remoteData }
   }
 
-  if (remoteChanged) {
-    const data = migrate(JSON.parse(remote.text))
-    saveSyncConfig({ ...cfg, lastSha: remote.sha, lastSyncedAt: data.updatedAt })
-    return { action: 'pulled', data }
+  // Work out, per file, which side moved.
+  const localFiles = fileMap(local)
+  const remoteFiles: Record<string, string> = { [META_PATH]: remote.metaSha ?? '' }
+  for (const [p, s] of Object.entries(remote.monthShas)) remoteFiles[p] = s
+
+  const paths = new Set([...Object.keys(localFiles), ...Object.keys(remote.monthShas), META_PATH])
+  const conflicts: string[] = []
+  const toPush: string[] = []
+  const toPull: string[] = []
+
+  for (const path of paths) {
+    const known = cfg.shas[path]
+    const remoteSha = path === META_PATH ? remote.metaSha : (remote.monthShas[path] ?? null)
+    const remoteMoved = (remoteSha ?? '') !== (known ?? '')
+    const localMoved = localFiles[path] !== undefined && localFiles[path] !== cfg.shas[`${path}#local`]
+
+    if (remoteMoved && localMoved) conflicts.push(path)
+    else if (remoteMoved) toPull.push(path)
+    else if (localMoved) toPush.push(path)
   }
 
-  if (localChanged) {
-    const sha = await putFile(
-      cfg,
-      DATA_PATH,
-      encodeText(serialise(local)),
-      commitMessage(local),
-      remote.sha,
-    )
-    saveSyncConfig({ ...cfg, lastSha: sha, lastSyncedAt: local.updatedAt })
-    return { action: 'pushed' }
+  if (conflicts.length) return { action: 'conflict', paths: conflicts, remote: remoteData }
+
+  if (!toPush.length && !toPull.length) return { action: 'inSync' }
+
+  // Pull first so pushes are built on top of the newest remote state.
+  let merged = local
+  if (toPull.length) {
+    merged = mergeFiles(local, remoteData, toPull, remote)
   }
 
-  return { action: 'inSync' }
+  const nextShas: Record<string, string> = { ...cfg.shas }
+  for (const path of toPull) {
+    const sha = path === META_PATH ? remote.metaSha : remote.monthShas[path]
+    if (sha) nextShas[path] = sha
+    // The local body is now the merged one; recording the pre-merge body would
+    // make the file look modified again on the very next sync.
+    nextShas[`${path}#local`] = contentOf(merged, path)
+  }
+
+  let pushed = 0
+  for (const path of toPush) {
+    const body = contentOf(merged, path)
+    const sha = await putFile(cfg, path, encodeText(body), commitMessage(path, merged), remoteFiles[path] || undefined)
+    nextShas[path] = sha
+    nextShas[`${path}#local`] = body
+    pushed++
+  }
+
+  saveSyncConfig({ ...cfg, shas: nextShas, lastSyncedAt: merged.updatedAt })
+
+  if (pushed && toPull.length) return { action: 'merged', data: merged, files: pushed }
+  if (pushed) return { action: 'pushed', files: pushed }
+  return { action: 'pulled', data: merged }
 }
 
-/** Force one side to win a conflict. */
+/** Take the remote version of the listed files, keep local for everything else. */
+function mergeFiles(
+  local: AppData,
+  remoteData: AppData,
+  paths: string[],
+  remote: RemoteSnapshot,
+): AppData {
+  const next: AppData = { ...local, plans: { ...local.plans }, txns: [...local.txns] }
+
+  for (const path of paths) {
+    if (path === META_PATH) {
+      next.settings = remoteData.settings
+      next.wallets = remoteData.wallets
+      next.accounts = remoteData.accounts
+      next.categories = remoteData.categories
+      continue
+    }
+    const month = path.slice(MONTH_DIR.length + 1, -3)
+    const rm = remote.months.find((m) => m.month === month)
+    next.txns = next.txns.filter((t) => t.date.slice(0, 7) !== month)
+    if (rm) {
+      next.txns.push(...rm.txns)
+      if (rm.plan) next.plans[month] = rm.plan
+      else delete next.plans[month]
+    } else {
+      delete next.plans[month]
+    }
+  }
+
+  next.updatedAt = new Date().toISOString()
+  return next
+}
+
+/** The serialised body of each file this device would write. */
+function fileMap(d: AppData): Record<string, string> {
+  const out: Record<string, string> = { [META_PATH]: serializeMeta(d) }
+  for (const month of monthKeys(d)) {
+    out[monthPath(month)] = serializeMonth(month, d.plans[month] ?? null, monthTxns(d, month))
+  }
+  return out
+}
+
+function contentOf(d: AppData, path: string): string {
+  if (path === META_PATH) return serializeMeta(d)
+  const month = path.slice(MONTH_DIR.length + 1, -3)
+  return serializeMonth(month, d.plans[month] ?? null, monthTxns(d, month))
+}
+
+async function pushAll(
+  cfg: SyncConfig,
+  d: AppData,
+  known: Record<string, string>,
+): Promise<Record<string, string>> {
+  const shas: Record<string, string> = { ...known }
+  for (const [path, body] of Object.entries(fileMap(d))) {
+    shas[path] = await putFile(cfg, path, encodeText(body), commitMessage(path, d), known[path])
+    shas[`${path}#local`] = body
+  }
+  return shas
+}
+
+/** Force one side to win, then bring the repo in line with it. */
 export async function resolveConflict(
   cfg: SyncConfig,
   keep: 'local' | 'remote',
   local: AppData,
   remote: AppData,
-  remoteSha: string,
 ): Promise<AppData> {
   if (keep === 'remote') {
-    saveSyncConfig({ ...cfg, lastSha: remoteSha, lastSyncedAt: remote.updatedAt })
-    return remote
+    const snapshot = await readRemote(cfg)
+    const shas = { ...snapshot.monthShas }
+    if (snapshot.metaSha) shas[META_PATH] = snapshot.metaSha
+    const data = assemble(snapshot.meta ?? parseMeta(serializeMeta(remote)), snapshot.months)
+    for (const [path, body] of Object.entries(fileMap(data))) shas[`${path}#local`] = body
+    saveSyncConfig({ ...cfg, shas, lastSyncedAt: data.updatedAt })
+    return data
   }
+
   const stamped = { ...local, updatedAt: new Date().toISOString() }
-  const sha = await putFile(
-    cfg,
-    DATA_PATH,
-    encodeText(serialise(stamped)),
-    commitMessage(stamped),
-    remoteSha,
-  )
-  saveSyncConfig({ ...cfg, lastSha: sha, lastSyncedAt: stamped.updatedAt })
+  const snapshot = await readRemote(cfg)
+  const current: Record<string, string> = { ...snapshot.monthShas }
+  if (snapshot.metaSha) current[META_PATH] = snapshot.metaSha
+  const shas = await pushAll(cfg, stamped, current)
+  saveSyncConfig({ ...cfg, shas, lastSyncedAt: stamped.updatedAt })
   return stamped
 }
 
@@ -126,6 +282,7 @@ export async function syncPhotos(
   let uploaded = 0
   let downloaded = 0
   let failed = 0
+  if (!referenced.length) return { uploaded, downloaded, failed }
 
   const remoteNames = new Set(await listFolder(cfg, PHOTO_DIR))
 
@@ -133,10 +290,9 @@ export async function syncPhotos(
     const name = `${id}.jpg`
     const onRemote = remoteNames.has(name)
     const local = await getPhoto(id)
-
     try {
       if (local && !onRemote) {
-        await putFile(cfg, `${PHOTO_DIR}/${name}`, await blobToBase64(local), `photo ${id}`)
+        await putFile(cfg, `${PHOTO_DIR}/${name}`, await blobToBase64(local), `照片 ${id}`)
         uploaded++
       } else if (!local && onRemote) {
         const blob = await getBlob(cfg, `${PHOTO_DIR}/${name}`)
@@ -153,11 +309,9 @@ export async function syncPhotos(
   return { uploaded, downloaded, failed }
 }
 
-function serialise(data: AppData): string {
-  return JSON.stringify(data, null, 2)
-}
-
-function commitMessage(data: AppData): string {
-  const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16)
-  return `記帳本 ${stamp}（${data.txns.length} 筆）`
+function commitMessage(path: string, d: AppData): string {
+  if (path === META_PATH) return '設定與分類'
+  const month = path.slice(MONTH_DIR.length + 1, -3)
+  const n = d.txns.filter((t) => t.date.slice(0, 7) === month).length
+  return `${month}（${n} 筆）`
 }
