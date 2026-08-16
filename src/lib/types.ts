@@ -89,6 +89,8 @@ export interface Settings {
   currencySymbol: string
   /** 每月從幾號開始算（例如 5 號發薪水就設 5），1 = 自然月 */
   monthStartDay: number
+  /** 最後一次匯出備份的時間，用來提醒該備份了 */
+  lastBackupAt?: string
 }
 
 export interface AppData {

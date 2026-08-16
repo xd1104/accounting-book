@@ -3,6 +3,7 @@ import { useStore } from '../store'
 import type { Theme } from '../store'
 import { downloadBackup, migrate, restorePhotos } from '../lib/storage'
 import { storageEstimate } from '../lib/photos'
+import { backupStatus, isPersisted, isStandalone } from '../lib/persist'
 import { push } from '../router'
 import { IconChevronR } from '../components/icons'
 
@@ -13,17 +14,23 @@ export function Settings() {
   const [busy, setBusy] = useState(false)
   const [usage, setUsage] = useState<{ usedMB: number; quotaMB: number } | null>(null)
 
+  const [persisted, setPersisted] = useState<boolean | null>(null)
+  const standalone = isStandalone()
+
   useEffect(() => {
     storageEstimate().then(setUsage)
+    isPersisted().then(setPersisted)
   }, [data])
 
   const photoCount = data.txns.reduce((n, t) => n + (t.photos?.length ?? 0), 0)
+  const backup = backupStatus(data.txns.length, data.settings.lastBackupAt)
 
   const doExport = async () => {
     setBusy(true)
     setMsg('')
     try {
       await downloadBackup(data)
+      updateSettings({ lastBackupAt: new Date().toISOString() })
       setMsg(photoCount > 0 ? `已匯出（含 ${photoCount} 張照片，檔案會比較大）` : '已匯出')
     } catch {
       setMsg('匯出失敗')
@@ -119,9 +126,21 @@ export function Settings() {
 
       <Group title="資料備份">
         <div className="px-4 pb-3 text-xs text-muted">
-          資料和照片都存在這台裝置的瀏覽器裡，換手機或清除瀏覽器資料就會不見。
-          要搬到別台裝置，就先「匯出備份」再到另一台「匯入備份」— 備份檔含照片。
+          資料和照片都存在這個瀏覽器裡。<b className="text-warn">請定期匯出備份</b> —
+          清除瀏覽器資料、換裝置，或刪掉主畫面的 App，記錄都會一起消失且救不回來。
+          <br />
+          <span className="text-faint">
+            注意：iPhone 上「主畫面 App」和 Safari 的資料是分開的兩份，不會互通。
+          </span>
         </div>
+        <Row
+          label="上次備份"
+          hint={backup.never ? '從來沒有備份過' : undefined}
+        >
+          <span className={`text-sm tnum ${backup.due ? 'text-warn font-semibold' : 'text-muted'}`}>
+            {backup.never ? '無' : backup.days === 0 ? '今天' : `${backup.days} 天前`}
+          </span>
+        </Row>
         <Row label="記錄筆數">
           <span className="text-sm tnum text-muted">
             {data.txns.length} 筆{photoCount > 0 && ` · ${photoCount} 張照片`}
@@ -135,6 +154,18 @@ export function Settings() {
             <span className="text-sm tnum text-muted">{usage.usedMB.toFixed(1)} MB</span>
           </Row>
         )}
+        <Row
+          label="目前開啟方式"
+          hint={
+            persisted === true
+              ? '瀏覽器已承諾不會自動清除資料'
+              : persisted === false
+                ? '瀏覽器可能在長期未開啟後自動清除，請務必備份'
+                : undefined
+          }
+        >
+          <span className="text-sm text-muted">{standalone ? '主畫面 App' : '瀏覽器分頁'}</span>
+        </Row>
         <div className="px-3 pb-3 grid grid-cols-2 gap-2">
           <button
             onClick={doExport}

@@ -7,6 +7,7 @@ import { Ring, budgetColor } from '../components/Ring'
 import { TxnRow } from '../components/TxnRow'
 import { IconChevronR, IconCheck, IconWallet } from '../components/icons'
 import { push } from '../router'
+import { BackupBanner } from '../components/BackupBanner'
 
 export function Home({ onEditTxn }: { onEditTxn: (id: string) => void }) {
   const { data } = useStore()
@@ -31,6 +32,8 @@ export function Home({ onEditTxn }: { onEditTxn: (id: string) => void }) {
   return (
     <div className="px-4 pb-6 space-y-4">
       <div className="pt-1 text-center text-sm text-muted">{formatFullDate(t)}</div>
+
+      <BackupBanner />
 
       {/* hero ring */}
       <div className="flex flex-col items-center pt-1">
