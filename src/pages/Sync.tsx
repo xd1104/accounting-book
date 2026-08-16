@@ -1,21 +1,39 @@
 import { useState } from 'react'
 import { useStore } from '../store'
-import { checkAccess } from '../lib/github'
+import { checkAccess, repoFromPagesUrl } from '../lib/github'
 import { IconCheck } from '../components/icons'
 
 const TOKEN_URL = 'https://github.com/settings/personal-access-tokens/new'
 const NEW_REPO_URL = 'https://github.com/new'
 
+/** Where this copy of the app is served from, when that is knowable. */
+const HERE = repoFromPagesUrl(window.location.href)
+
 export function Sync() {
   const { data, sync, configureSync, disconnectSync, syncNow, resolveSync } = useStore()
   const connected = !!sync.config
 
-  const [owner, setOwner] = useState('')
-  const [repo, setRepo] = useState('accounting-data')
+  // Using the app's own repo needs no setup beyond a token, so it leads when
+  // the address bar tells us which repo that is.
+  const [mode, setMode] = useState<'here' | 'new'>(HERE ? 'here' : 'new')
+  const [owner, setOwner] = useState(HERE?.owner ?? '')
+  const [repo, setRepo] = useState(HERE ? HERE.repo : 'accounting-data')
   const [token, setToken] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [warn, setWarn] = useState('')
+
+  const pick = (next: 'here' | 'new') => {
+    setMode(next)
+    setErr('')
+    setWarn('')
+    if (next === 'here' && HERE) {
+      setOwner(HERE.owner)
+      setRepo(HERE.repo)
+    } else {
+      setRepo('accounting-data')
+    }
+  }
 
   const connect = async () => {
     setBusy(true)
@@ -23,9 +41,9 @@ export function Sync() {
     setWarn('')
     try {
       const info = await checkAccess({ owner: owner.trim(), repo: repo.trim(), token: token.trim() })
-      if (!info.private) {
-        setWarn('提醒：這個 repo 是公開的，帳目所有人都看得到。建議改成 Private。')
-      }
+      // Worth saying once, but not worth nagging about: storing the ledger in a
+      // public repo is a real choice, not a mistake to be corrected.
+      if (!info.private) setWarn('這個 repo 是公開的，帳目所有人都看得到。')
       configureSync({
         owner: owner.trim(),
         repo: repo.trim(),
@@ -153,20 +171,56 @@ export function Sync() {
   return (
     <div className="px-4 pb-6 space-y-4">
       <div className="bg-surface rounded-3xl p-4 text-xs text-muted leading-relaxed">
-        把資料存到你自己的 <b className="text-ink">私人 GitHub repo</b>，手機和電腦就會是同一份，
+        把資料存到你自己的 <b className="text-ink">GitHub repo</b>，手機和電腦就會是同一份，
         而且每次同步都是一次 commit，改錯還能從歷史紀錄復原。
       </div>
 
-      <Step n={1} title="開一個私人 repo">
-        <p>
-          到{' '}
-          <a href={NEW_REPO_URL} target="_blank" rel="noreferrer" className="text-brand underline">
-            github.com/new
-          </a>{' '}
-          建立，名稱建議 <code className="text-ink">accounting-data</code>，
-          <b className="text-warn">務必選 Private</b>，並勾選 Add a README（不能是空 repo）。
-        </p>
-      </Step>
+      {HERE && (
+        <div className="grid grid-cols-2 gap-2">
+          <ModeCard
+            active={mode === 'here'}
+            onClick={() => pick('here')}
+            title="用這個 repo"
+            desc={`${HERE.owner}/${HERE.repo}`}
+            note="不用另外開，只要 token"
+          />
+          <ModeCard
+            active={mode === 'new'}
+            onClick={() => pick('new')}
+            title="另開一個 repo"
+            desc="accounting-data"
+            note="想設 Private 就選這個"
+          />
+        </div>
+      )}
+
+      {mode === 'here' ? (
+        <Step n={1} title="確認這個 repo 是公開還是私人">
+          <p>
+            資料會存進 <code className="text-ink">{owner}/{repo}</code> 的{' '}
+            <code className="text-ink">data/</code> 資料夾。
+          </p>
+          <p className="mt-1">
+            <b className="text-warn">如果它是 Public，你的帳目就是所有人都看得到。</b>
+            介意的話有兩個做法：把這個 repo 改成 Private（不過免費帳號的 GitHub Pages
+            就不能用了，網頁會關掉），或改選「另開一個 repo」把資料分開放。
+          </p>
+          <p className="mt-1 text-faint">
+            存資料不會觸發重新部署，網頁不會因為你記帳而一直重建。
+          </p>
+        </Step>
+      ) : (
+        <Step n={1} title="開一個私人 repo">
+          <p>
+            到{' '}
+            <a href={NEW_REPO_URL} target="_blank" rel="noreferrer" className="text-brand underline">
+              github.com/new
+            </a>{' '}
+            建立，名稱建議 <code className="text-ink">accounting-data</code>，
+            <b className="text-warn">務必選 Private</b>，並勾選 Add a README（不能是空 repo）。
+          </p>
+        </Step>
+      )}
 
       <Step n={2} title="產生存取 token">
         <p>
@@ -177,7 +231,10 @@ export function Sync() {
           建立：
         </p>
         <ul className="mt-1 space-y-0.5 list-disc pl-4">
-          <li>Repository access → Only select repositories → 選剛剛那個</li>
+          <li>
+            Repository access → Only select repositories → 選{' '}
+            <code className="text-ink">{repo || '那個 repo'}</code>
+          </li>
           <li>Permissions → Repository permissions → Contents → <b className="text-ink">Read and write</b></li>
           <li>Expiration 可以設久一點，到期後要重新產生</li>
         </ul>
@@ -229,6 +286,33 @@ export function Sync() {
         建議只給這一個 repo 的權限，這樣即使外流，影響範圍也僅限於它。
       </p>
     </div>
+  )
+}
+
+function ModeCard({
+  active,
+  onClick,
+  title,
+  desc,
+  note,
+}: {
+  active: boolean
+  onClick: () => void
+  title: string
+  desc: string
+  note: string
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-3xl p-3 text-left transition active:scale-[0.98] ${
+        active ? 'bg-brand/12 ring-2 ring-brand' : 'bg-surface'
+      }`}
+    >
+      <div className={`text-sm font-semibold ${active ? 'text-brand' : 'text-ink'}`}>{title}</div>
+      <div className="text-[11px] text-muted mt-0.5 break-all">{desc}</div>
+      <div className="text-[11px] text-faint mt-1">{note}</div>
+    </button>
   )
 }
 

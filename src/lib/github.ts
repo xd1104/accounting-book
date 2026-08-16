@@ -152,3 +152,28 @@ export async function blobToBase64(blob: Blob): Promise<string> {
   const buf = new Uint8Array(await blob.arrayBuffer())
   return bytesToBase64(buf)
 }
+
+/**
+ * The repo this copy of the app is being served from, read off the Pages URL.
+ *
+ * Storing the ledger in the same repo as the app is a perfectly good option, and
+ * the one that needs no setup at all — so it should not require typing out an
+ * account and repo name that the address bar already knows.
+ *
+ * Returns null anywhere that is not a github.io host (local dev, a custom
+ * domain), where the URL says nothing about which repo is behind it.
+ */
+export function repoFromPagesUrl(href: string): { owner: string; repo: string } | null {
+  let url: URL
+  try {
+    url = new URL(href)
+  } catch {
+    return null
+  }
+  const host = /^([A-Za-z0-9-]+)\.github\.io$/.exec(url.hostname)
+  if (!host) return null
+  const owner = host[1]
+  const first = url.pathname.split('/').filter(Boolean)[0]
+  // No path segment means a user site, which lives in a repo named after itself.
+  return { owner, repo: first ?? `${owner}.github.io` }
+}
