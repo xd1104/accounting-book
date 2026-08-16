@@ -3,7 +3,8 @@ import { useStore } from '../store'
 import type { TxnType } from '../lib/types'
 import { Sheet } from './Sheet'
 import { NumberPad, evalExpr, hasOperator } from './NumberPad'
-import { IconCamera, IconTrash } from './icons'
+import { IconCamera, IconCheck, IconChevronR, IconTrash } from './icons'
+import { WALLET_KIND_LABEL } from '../lib/defaults'
 import { money } from '../lib/format'
 import { addDays, periodOf, today } from '../lib/date'
 import { getPlan } from '../lib/budget'
@@ -33,6 +34,7 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
   const [photos, setPhotos] = useState<string[]>([])
   /** The keypad covers half the sheet, so it stays down until the amount is tapped. */
   const [padOpen, setPadOpen] = useState(false)
+  const [picker, setPicker] = useState<'category' | 'wallet' | null>(null)
   const [busy, setBusy] = useState(false)
   const [viewing, setViewing] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -104,6 +106,7 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
     addedRef.current = []
     savedRef.current = false
     setPadOpen(false)
+    setPicker(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editId])
 
@@ -166,12 +169,14 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
 
   const sym = data.settings.currencySymbol
   const selectedCategory = categories.find((c) => c.id === categoryId)
+  const selectedWallet = wallets.find((w) => w.id === walletId)
 
   return (
     <Sheet
       open={open}
       onClose={cancel}
-      full
+      // Hug the (now compact) form; only claim the screen once the keypad is up.
+      full={padOpen}
       footer={
         padOpen ? (
           <div>
@@ -281,72 +286,24 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
         )}
       </button>
 
-      {/* 3. category — only capped while the keypad is taking up half the sheet */}
-      <div
-        className={`grid grid-cols-5 gap-1.5 ${padOpen ? 'max-h-[172px] overflow-y-auto' : ''}`}
-      >
-        {categories.map((c) => {
-          const on = c.id === categoryId
-          return (
-            <button
-              key={c.id}
-              onClick={() => setCategoryId(c.id)}
-              className="flex flex-col items-center gap-1 py-2 rounded-2xl transition active:scale-95"
-              style={on ? { background: `${c.color}22` } : undefined}
-            >
-              <span
-                className="w-10 h-10 grid place-items-center rounded-full text-xl transition"
-                style={{
-                  background: on ? c.color : 'var(--surface-2)',
-                  boxShadow: on ? `0 4px 12px ${c.color}55` : undefined,
-                }}
-              >
-                {c.emoji}
-              </span>
-              <span className={`text-[11px] leading-tight ${on ? 'text-ink font-medium' : 'text-muted'}`}>
-                {c.name}
-              </span>
-            </button>
-          )
-        })}
-      </div>
-
-      {/* 4. where the money came from */}
-      <div className="mt-3">
-        <div className="text-[11px] text-muted mb-1.5">
-          {type === 'expense' ? '從哪裡付？' : '收到哪裡？'}
-        </div>
-        <div className="flex gap-1.5 overflow-x-auto pb-1">
-          {wallets.map((w) => (
-            <button
-              key={w.id}
-              onClick={() => setWalletId(w.id)}
-              className={`shrink-0 flex items-center gap-1.5 pl-1.5 pr-3 h-10 rounded-xl transition active:scale-95 ${
-                walletId === w.id ? 'bg-brand-soft ring-2 ring-brand' : 'bg-surface2'
-              }`}
-            >
-              <span
-                className="w-7 h-7 grid place-items-center rounded-full text-sm"
-                style={{ background: `${w.color}22` }}
-              >
-                {w.emoji}
-              </span>
-              <span
-                className={`text-xs ${walletId === w.id ? 'font-semibold text-brand' : 'text-muted'}`}
-              >
-                {w.name}
-              </span>
-            </button>
-          ))}
-          <button
-            onClick={() => setWalletId(null)}
-            className={`shrink-0 px-3 h-10 rounded-xl text-xs transition ${
-              walletId === null ? 'bg-brand-soft ring-2 ring-brand text-brand font-semibold' : 'bg-surface2 text-muted'
-            }`}
-          >
-            不指定
-          </button>
-        </div>
+      {/* 3. category and 4. source — collapsed into rows; the grids were crowding the sheet */}
+      <div className="mt-3 space-y-2">
+        <PickerRow
+          label="分類"
+          emoji={selectedCategory?.emoji}
+          color={selectedCategory?.color}
+          text={selectedCategory?.name ?? '選擇分類'}
+          muted={!selectedCategory}
+          onClick={() => setPicker('category')}
+        />
+        <PickerRow
+          label={type === 'expense' ? '從哪裡付' : '收到哪裡'}
+          emoji={selectedWallet?.emoji}
+          color={selectedWallet?.color}
+          text={selectedWallet?.name ?? '不指定'}
+          muted={!selectedWallet}
+          onClick={() => setPicker('wallet')}
+        />
       </div>
 
       {/* 5. detail and photos */}
@@ -420,6 +377,138 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
       </div>
 
       <PhotoViewer id={viewing} onClose={() => setViewing(null)} />
+
+      {/* category picker */}
+      <Sheet open={picker === 'category'} onClose={() => setPicker(null)} title="選擇分類">
+        <div className="grid grid-cols-4 gap-1.5 pb-4">
+          {categories.map((c) => {
+            const on = c.id === categoryId
+            return (
+              <button
+                key={c.id}
+                onClick={() => {
+                  setCategoryId(c.id)
+                  setPicker(null)
+                }}
+                className="flex flex-col items-center gap-1 py-3 rounded-2xl transition active:scale-95"
+                style={on ? { background: `${c.color}22` } : undefined}
+              >
+                <span
+                  className="w-12 h-12 grid place-items-center rounded-full text-2xl transition"
+                  style={{
+                    background: on ? c.color : 'var(--surface-2)',
+                    boxShadow: on ? `0 4px 12px ${c.color}55` : undefined,
+                  }}
+                >
+                  {c.emoji}
+                </span>
+                <span
+                  className={`text-xs leading-tight ${on ? 'text-ink font-medium' : 'text-muted'}`}
+                >
+                  {c.name}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </Sheet>
+
+      {/* payment source picker */}
+      <Sheet
+        open={picker === 'wallet'}
+        onClose={() => setPicker(null)}
+        title={type === 'expense' ? '從哪裡付？' : '收到哪裡？'}
+      >
+        <div className="pb-4">
+          {(['cash', 'bank'] as const).map((k) => {
+            const group = wallets.filter((w) => w.kind === k)
+            if (!group.length) return null
+            return (
+              <div key={k} className="mb-1">
+                <div className="text-[11px] text-muted px-2 pt-2 pb-1">{WALLET_KIND_LABEL[k]}</div>
+                {group.map((w) => (
+                  <button
+                    key={w.id}
+                    onClick={() => {
+                      setWalletId(w.id)
+                      setPicker(null)
+                    }}
+                    className={`w-full flex items-center gap-3 p-3 rounded-2xl text-left transition ${
+                      walletId === w.id ? 'bg-brand-soft' : 'active:bg-surface2'
+                    }`}
+                  >
+                    <span
+                      className="w-10 h-10 shrink-0 grid place-items-center rounded-full text-lg"
+                      style={{ background: `${w.color}22` }}
+                    >
+                      {w.emoji}
+                    </span>
+                    <span className={`flex-1 ${walletId === w.id ? 'font-semibold text-brand' : ''}`}>
+                      {w.name}
+                    </span>
+                    {walletId === w.id && <IconCheck className="w-4 h-4 text-brand" />}
+                  </button>
+                ))}
+              </div>
+            )
+          })}
+          <button
+            onClick={() => {
+              setWalletId(null)
+              setPicker(null)
+            }}
+            className={`w-full flex items-center gap-3 p-3 mt-1 rounded-2xl text-left transition ${
+              walletId === null ? 'bg-brand-soft' : 'active:bg-surface2'
+            }`}
+          >
+            <span className="w-10 h-10 shrink-0 grid place-items-center rounded-full text-lg bg-surface2">
+              ❓
+            </span>
+            <span className={`flex-1 ${walletId === null ? 'font-semibold text-brand' : ''}`}>
+              不指定
+            </span>
+            {walletId === null && <IconCheck className="w-4 h-4 text-brand" />}
+          </button>
+        </div>
+      </Sheet>
     </Sheet>
+  )
+}
+
+/** A compact row that shows the current pick and opens a chooser, matching the 「算在」 select. */
+function PickerRow({
+  label,
+  emoji,
+  color,
+  text,
+  muted,
+  onClick,
+}: {
+  label: string
+  emoji?: string
+  color?: string
+  text: string
+  muted?: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full h-11 px-3 rounded-xl bg-surface2 flex items-center gap-2 text-left active:scale-[0.99] transition"
+    >
+      <span className="text-xs text-muted shrink-0">{label}</span>
+      {emoji && (
+        <span
+          className="w-6 h-6 shrink-0 grid place-items-center rounded-full text-sm"
+          style={{ background: `${color ?? '#6b7280'}22` }}
+        >
+          {emoji}
+        </span>
+      )}
+      <span className={`flex-1 min-w-0 truncate text-sm ${muted ? 'text-faint' : 'text-ink'}`}>
+        {text}
+      </span>
+      <IconChevronR className="w-4 h-4 text-faint shrink-0" />
+    </button>
   )
 }
