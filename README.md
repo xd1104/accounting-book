@@ -40,6 +40,8 @@
 - 記錄有變動會自動上傳（延遲數秒），開啟或切回 App 時會自動下載
 - 每次同步都是一次 commit，改錯或誤刪可以從 GitHub 的歷史紀錄復原
 - 兩邊改到**同一個月份**時才會停下來問你留哪一邊，不會默默覆蓋
+- 同步一開，**手動備份的提醒就會停掉** — 每次記帳都自動上傳，比每週匯出一次可靠。
+  只有同步壞掉或卡在衝突時，提醒才會再跳出來
 
 需要一組 [fine-grained token](https://github.com/settings/personal-access-tokens/new)，
 只給那個 repo 的 Contents 讀寫權限即可。Token 只存在瀏覽器本機，

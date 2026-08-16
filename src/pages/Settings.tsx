@@ -3,7 +3,7 @@ import { useStore } from '../store'
 import type { Theme } from '../store'
 import { downloadBackup, migrate, restorePhotos } from '../lib/storage'
 import { storageEstimate } from '../lib/photos'
-import { backupStatus, isPersisted, isStandalone } from '../lib/persist'
+import { backupStatus, cloudState, isPersisted, isStandalone } from '../lib/persist'
 import { push } from '../router'
 import { IconChevronR } from '../components/icons'
 
@@ -23,7 +23,8 @@ export function Settings() {
   }, [data])
 
   const photoCount = data.txns.reduce((n, t) => n + (t.photos?.length ?? 0), 0)
-  const backup = backupStatus(data.txns.length, data.settings.lastBackupAt)
+  const cloud = cloudState(sync.status, !!sync.config)
+  const backup = backupStatus(data.txns.length, data.settings.lastBackupAt, cloud)
 
   const doExport = async () => {
     setBusy(true)
@@ -142,8 +143,21 @@ export function Settings() {
 
       <Group title="資料備份">
         <div className="px-4 pb-3 text-xs text-muted">
-          資料和照片都存在這個瀏覽器裡。<b className="text-warn">請定期匯出備份</b> —
-          清除瀏覽器資料、換裝置，或刪掉主畫面的 App，記錄都會一起消失且救不回來。
+          {cloud === 'ok' ? (
+            <>
+              雲端同步開著，每次記帳都會自動上傳，<b className="text-ok">不需要再手動備份</b>。
+              下面的匯出是額外的離線副本，想留就留。
+            </>
+          ) : (
+            <>
+              資料和照片都存在這個瀏覽器裡。<b className="text-warn">請定期匯出備份</b> —
+              清除瀏覽器資料、換裝置，或刪掉主畫面的 App，記錄都會一起消失且救不回來。
+              <br />
+              <span className="text-faint">
+                嫌麻煩的話，開啟「雲端同步」就會自動幫你存，不用再記得備份。
+              </span>
+            </>
+          )}
           <br />
           <span className="text-faint">
             注意：iPhone 上「主畫面 App」和 Safari 的資料是分開的兩份，不會互通。

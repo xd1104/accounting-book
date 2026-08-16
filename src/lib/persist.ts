@@ -43,13 +43,33 @@ export function daysSince(iso: string | undefined): number | null {
   return Number.isFinite(ms) ? Math.floor(ms / 86400000) : null
 }
 
+/**
+ * Whether a working cloud copy exists.
+ *  - `off`   not connected, so this browser holds the only copy
+ *  - `ok`    connected and healthy
+ *  - `stuck` connected but failing or waiting on a conflict, so the cloud copy
+ *            has stopped keeping up and is quietly going stale
+ */
+export type CloudState = 'off' | 'ok' | 'stuck'
+
 /** How overdue a backup is, given the record count and when one was last taken. */
 export function backupStatus(
   txnCount: number,
   lastBackupAt: string | undefined,
+  cloud: CloudState = 'off',
 ): { due: boolean; never: boolean; days: number | null } {
   const days = daysSince(lastBackupAt)
+  // Sync uploads every change within seconds and keeps the full history in a
+  // repo — strictly better than a file in Downloads. Asking for a manual export
+  // on top of that is a chore with nothing behind it, so stand down.
+  if (cloud === 'ok') return { due: false, never: !lastBackupAt, days }
   if (txnCount === 0) return { due: false, never: !lastBackupAt, days }
   if (!lastBackupAt) return { due: true, never: true, days: null }
   return { due: (days ?? 0) >= 7, never: false, days }
+}
+
+/** Map sync status onto the durability question the banner actually asks. */
+export function cloudState(status: string, hasConfig: boolean): CloudState {
+  if (!hasConfig) return 'off'
+  return status === 'error' || status === 'conflict' ? 'stuck' : 'ok'
 }
