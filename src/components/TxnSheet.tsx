@@ -31,6 +31,8 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
   const [walletId, setWalletId] = useState<string | null>(null)
   const [note, setNote] = useState('')
   const [photos, setPhotos] = useState<string[]>([])
+  /** The keypad covers half the sheet, so it stays down until the amount is tapped. */
+  const [padOpen, setPadOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [viewing, setViewing] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -101,6 +103,7 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
     }
     addedRef.current = []
     savedRef.current = false
+    setPadOpen(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editId])
 
@@ -170,13 +173,34 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
       onClose={cancel}
       full
       footer={
-        <NumberPad
-          value={expr}
-          onChange={setExpr}
-          onSubmit={submit}
-          submitDisabled={!valid}
-          submitLabel={editing ? '儲存' : undefined}
-        />
+        padOpen ? (
+          <div>
+            <button
+              onClick={() => setPadOpen(false)}
+              className="w-full h-7 -mt-1 mb-1 grid place-items-center text-faint active:text-muted"
+              aria-label="收起鍵盤"
+            >
+              <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+            <NumberPad
+              value={expr}
+              onChange={setExpr}
+              onSubmit={submit}
+              submitDisabled={!valid}
+              submitLabel={editing ? '儲存' : undefined}
+            />
+          </div>
+        ) : (
+          <button
+            onClick={submit}
+            disabled={!valid}
+            className="w-full h-12 rounded-2xl bg-brand text-white font-semibold disabled:opacity-40 active:scale-[0.98] transition"
+          >
+            {amount > 0 ? (editing ? '儲存' : `記一筆 ${money(amount, sym)}`) : '先輸入金額'}
+          </button>
+        )
       }
     >
       {/* type switch */}
@@ -231,26 +255,36 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
         </div>
       </div>
 
-      {/* 2. amount */}
-      <div className="pt-3 pb-2 text-right">
-        <div
-          className={`text-5xl font-semibold tnum leading-none ${
-            type === 'income' ? 'text-ok' : 'text-ink'
-          }`}
-        >
-          {amount === 0 && !expr ? (
-            <span className="text-faint">{sym}0</span>
-          ) : (
-            money(amount, sym)
-          )}
-        </div>
-        <div className="h-5 mt-1 text-sm text-muted tnum">
-          {hasOperator(expr) ? expr.replace(/-/g, '−') : ''}
-        </div>
-      </div>
+      {/* 2. amount — tapping it raises the keypad */}
+      <button
+        onClick={() => setPadOpen(true)}
+        className={`w-full mt-3 mb-1 px-3 py-2 rounded-2xl text-right transition ${
+          padOpen ? 'bg-brand-soft' : 'bg-surface2 active:scale-[0.99]'
+        }`}
+      >
+        <span className="flex items-baseline justify-between gap-2">
+          <span className="text-[11px] text-muted shrink-0">
+            {padOpen ? '輸入金額' : amount > 0 ? '金額' : '點一下輸入金額'}
+          </span>
+          <span
+            className={`text-4xl font-semibold tnum leading-none truncate ${
+              type === 'income' ? 'text-ok' : 'text-ink'
+            }`}
+          >
+            {amount === 0 && !expr ? <span className="text-faint">{sym}0</span> : money(amount, sym)}
+          </span>
+        </span>
+        {hasOperator(expr) && (
+          <span className="block h-4 mt-0.5 text-xs text-muted tnum">
+            {expr.replace(/-/g, '−')}
+          </span>
+        )}
+      </button>
 
-      {/* 3. category — capped at two visible rows so the fields below stay reachable */}
-      <div className="grid grid-cols-5 gap-1.5 max-h-[172px] overflow-y-auto">
+      {/* 3. category — only capped while the keypad is taking up half the sheet */}
+      <div
+        className={`grid grid-cols-5 gap-1.5 ${padOpen ? 'max-h-[172px] overflow-y-auto' : ''}`}
+      >
         {categories.map((c) => {
           const on = c.id === categoryId
           return (
@@ -321,6 +355,7 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
+            onFocus={() => setPadOpen(false)}
             rows={2}
             placeholder={
               selectedCategory
