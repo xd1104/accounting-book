@@ -48,5 +48,5 @@ lastBackupAt: null
 - {"id":"2044f30a-632b-4e1e-9457-8bcfe36a33c3","name":"其他","emoji":"✨","color":"#6b7280","type":"income","order":4}
 - {"name":"還錢","emoji":"🐶","color":"#14b8a6","type":"expense","id":"f151d2c0-6431-4ae3-a5c2-15e947f734ee","order":11}
 - {"name":"還錢","emoji":"🐶","color":"#14b8a6","type":"income","id":"9d126baa-2ac3-43c2-8bf9-e264f8c35ec1","order":12}
-- {"name":"銀太郎","emoji":"⛽","color":"#6b7280","type":"expense","id":"fbe01c89-bc8c-498b-9c59-c0c1539007a1","order":13}
+- {"name":"銀太郎","emoji":"🛵","color":"#6b7280","type":"expense","id":"fbe01c89-bc8c-498b-9c59-c0c1539007a1","order":13}
 - {"name":"漂亮","emoji":"💄","color":"#ec4899","type":"expense","id":"f24888bc-7c87-4367-ab98-69b977a8496e","order":14}
