@@ -22,9 +22,25 @@ export function Home({ onEditTxn }: { onEditTxn: (id: string) => void }) {
   )
 
   const hasBudget = s.dailyAllowance > 0
-  const progress = hasBudget && s.todayBudget > 0 ? s.spentToday / s.todayBudget : s.spentToday > 0 ? 1.4 : 0
-  const color = hasBudget ? budgetColor(progress) : 'var(--brand)'
   const over = s.todayRemaining < 0
+
+  /**
+   * How much of today's allowance is used up, for the ring's colour.
+   *
+   * Not simply spentToday / todayBudget: with rollover on, an earlier
+   * overspend makes todayBudget itself negative, and then today's zero
+   * spending divides out to 0% and paints the ring green while the number
+   * inside it reads 今天超支. Once the budget is gone the day starts over the
+   * line regardless of what has been spent since.
+   */
+  const progress = !hasBudget
+    ? 0
+    : s.todayBudget > 0
+      ? s.spentToday / s.todayBudget
+      : over
+        ? 1.4
+        : 1
+  const color = hasBudget ? budgetColor(progress) : 'var(--brand)'
 
   const doneCount = s.plan?.allocations.filter((a) => a.done).length ?? 0
   const totalCount = s.plan?.allocations.length ?? 0
@@ -40,7 +56,11 @@ export function Home({ onEditTxn }: { onEditTxn: (id: string) => void }) {
         <Ring progress={hasBudget ? progress : 0} color={color}>
           {hasBudget ? (
             <>
-              <div className="text-xs text-muted mb-1">{over ? '今天超支' : '今天還能花'}</div>
+              {/* Nothing spent today means the shortfall was carried in from
+                  earlier days — "今天超支" would blame the wrong day. */}
+              <div className="text-xs text-muted mb-1">
+                {over ? (s.spentToday > 0 ? '今天超支' : '累積超支') : '今天還能花'}
+              </div>
               <div className="text-[40px] font-bold leading-none" style={{ color }}>
                 {money(Math.abs(s.todayRemaining), sym)}
               </div>
