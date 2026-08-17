@@ -178,11 +178,19 @@ export function StoreProvider({
       }
       if (out.action === 'pulled' || out.action === 'merged') adopt(out.data)
 
-      const photos = await syncPhotos(
-        cfg,
-        out.action === 'pulled' || out.action === 'merged' ? out.data : dataRef.current,
-      )
+      const synced =
+        out.action === 'pulled' || out.action === 'merged' ? out.data : dataRef.current
+      const photos = await syncPhotos(cfg, synced)
+      // A deletion made on another device arrives as a record disappearing; the
+      // photo it referenced is then dead weight in this device's storage too.
+      pruneOrphans(new Set(synced.txns.flatMap((t) => t.photos ?? []))).catch(() => {})
+
       const saved = loadSyncConfig()
+      const parts = [
+        photos.uploaded && `上傳 ${photos.uploaded}`,
+        photos.downloaded && `下載 ${photos.downloaded}`,
+        photos.deleted && `刪除 ${photos.deleted}`,
+      ].filter(Boolean)
       setSync((s) => ({
         ...s,
         status: 'idle',
@@ -190,10 +198,7 @@ export function StoreProvider({
         lastSyncedAt: saved?.lastSyncedAt ?? null,
         conflict: null,
         error: null,
-        detail:
-          photos.uploaded || photos.downloaded
-            ? `照片：上傳 ${photos.uploaded}、下載 ${photos.downloaded}`
-            : null,
+        detail: parts.length ? `照片：${parts.join('、')}` : null,
       }))
     } catch (e) {
       setSync((s) => ({ ...s, status: 'error', error: (e as Error).message || '同步失敗' }))

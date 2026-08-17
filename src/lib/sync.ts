@@ -1,7 +1,7 @@
 import type { AppData } from './types'
 import { getPhoto, putPhoto } from './photos'
 import type { GitHubConfig } from './github'
-import { blobToBase64, encodeText, getBlob, getFile, listFolder, putFile } from './github'
+import { blobToBase64, deleteFile, encodeText, getBlob, getFile, listFolder, putFile } from './github'
 import {
   META_PATH,
   MONTH_DIR,
@@ -63,11 +63,11 @@ interface RemoteSnapshot {
 
 async function readRemote(cfg: SyncConfig): Promise<RemoteSnapshot> {
   const metaFile = await getFile(cfg, META_PATH)
-  const names = await listFolder(cfg, MONTH_DIR)
+  const entries = await listFolder(cfg, MONTH_DIR)
   const months: MonthFile[] = []
   const monthShas: Record<string, string> = {}
 
-  for (const name of names) {
+  for (const { name } of entries) {
     if (!name.endsWith('.md')) continue
     const month = name.slice(0, -3)
     const f = await getFile(cfg, monthPath(month))
@@ -81,7 +81,7 @@ async function readRemote(cfg: SyncConfig): Promise<RemoteSnapshot> {
     metaSha: metaFile?.sha ?? null,
     months,
     monthShas,
-    empty: !metaFile && names.length === 0,
+    empty: !metaFile && entries.length === 0,
   }
 }
 
@@ -273,22 +273,30 @@ export async function resolveConflict(
 /**
  * Photos ride along as individual files. Failures here are reported but never
  * abort a sync — a missing photo is a nuisance, a missing ledger is not.
+ *
+ * This runs only after the ledger sync has succeeded, so `data` is the merged
+ * view of every device that has synced. That is what makes deletion safe: a
+ * photo no record in that view references is genuinely orphaned, not merely
+ * missing from this device's copy.
  */
 export async function syncPhotos(
   cfg: SyncConfig,
   data: AppData,
-): Promise<{ uploaded: number; downloaded: number; failed: number }> {
-  const referenced = [...new Set(data.txns.flatMap((t) => t.photos ?? []))]
+): Promise<{ uploaded: number; downloaded: number; deleted: number; failed: number }> {
+  const referenced = new Set(data.txns.flatMap((t) => t.photos ?? []))
   let uploaded = 0
   let downloaded = 0
+  let deleted = 0
   let failed = 0
-  if (!referenced.length) return { uploaded, downloaded, failed }
 
-  const remoteNames = new Set(await listFolder(cfg, PHOTO_DIR))
+  // Not skipped when nothing is referenced: deleting the last photo is exactly
+  // when the repo has one to clean up.
+  const remote = await listFolder(cfg, PHOTO_DIR)
+  const remoteShas = new Map(remote.map((e) => [e.name, e.sha]))
 
   for (const id of referenced) {
     const name = `${id}.jpg`
-    const onRemote = remoteNames.has(name)
+    const onRemote = remoteShas.has(name)
     const local = await getPhoto(id)
     try {
       if (local && !onRemote) {
@@ -306,7 +314,22 @@ export async function syncPhotos(
     }
   }
 
-  return { uploaded, downloaded, failed }
+  // Delete a record and its photo goes with it, here as well as on the device.
+  for (const [name, sha] of remoteShas) {
+    const id = name.replace(/\.jpg$/, '')
+    if (referenced.has(id)) continue
+    // No sha, no delete: the API needs it to know what it is removing, and
+    // guessing is not an option when the call is destructive.
+    if (!sha) continue
+    try {
+      await deleteFile(cfg, `${PHOTO_DIR}/${name}`, sha, `刪除照片 ${id}`)
+      deleted++
+    } catch {
+      failed++
+    }
+  }
+
+  return { uploaded, downloaded, deleted, failed }
 }
 
 function commitMessage(path: string, d: AppData): string {

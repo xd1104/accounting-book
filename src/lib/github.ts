@@ -113,17 +113,35 @@ export async function getBlob(cfg: GitHubConfig, path: string): Promise<Blob | n
   return new Blob([bytes.buffer as ArrayBuffer], { type: 'image/jpeg' })
 }
 
-/** Names of the files directly inside a folder; empty when it does not exist. */
-export async function listFolder(cfg: GitHubConfig, path: string): Promise<string[]> {
+/** Files directly inside a folder; empty when it does not exist. */
+export async function listFolder(
+  cfg: GitHubConfig,
+  path: string,
+): Promise<Array<{ name: string; sha: string }>> {
   const res = await fetch(
     `${API}/repos/${cfg.owner}/${cfg.repo}/contents/${encodeURI(path)}?ref=${encodeURIComponent(cfg.branch)}`,
     { headers: { ...headers(cfg.token), 'Cache-Control': 'no-cache' } },
   )
   if (res.status === 404) return []
   if (!res.ok) await fail(res)
-  const json = (await res.json()) as Array<{ name: string; type: string }> | unknown
+  const json = (await res.json()) as Array<{ name: string; type: string; sha: string }> | unknown
   if (!Array.isArray(json)) return []
-  return json.filter((e) => e.type === 'file').map((e) => e.name)
+  return json.filter((e) => e.type === 'file').map((e) => ({ name: e.name, sha: e.sha }))
+}
+
+/** Removes a file. `sha` identifies the version being deleted. */
+export async function deleteFile(
+  cfg: GitHubConfig,
+  path: string,
+  sha: string,
+  message: string,
+): Promise<void> {
+  const res = await fetch(`${API}/repos/${cfg.owner}/${cfg.repo}/contents/${encodeURI(path)}`, {
+    method: 'DELETE',
+    headers: { ...headers(cfg.token), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, sha, branch: cfg.branch }),
+  })
+  if (!res.ok) await fail(res)
 }
 
 /**
