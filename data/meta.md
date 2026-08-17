@@ -10,7 +10,6 @@ lastBackupAt: null
 - {"id":"db4467f8-894c-4604-8201-9df975cdaf57","name":"LineBank","emoji":"🏦","color":"#84cc16","kind":"bank","order":1}
 - {"name":"國泰世華","emoji":"🏦","color":"#00873c","kind":"bank","id":"ca52fa3a-151c-4f83-bb76-9111d058fb73","order":3}
 - {"name":"臺灣銀行","emoji":"🏦","color":"#0b6b3a","kind":"bank","id":"07067754-a1e2-4bab-a9b4-04e83683b3c8","order":4}
-- {"name":"LINE Bank","emoji":"📱","color":"#06c755","kind":"bank","id":"914387a6-9352-4428-a966-6175e46f8268","order":5}
 - {"name":"給黏寶","emoji":"🐶","color":"#14b8a6","kind":"bank","id":"6ef8599e-8f5f-4699-a07a-15ebaed3a7da","order":6}
 
 ## 分配項目
