@@ -17,7 +17,7 @@ lastBackupAt: null
 - {"id":"884dac46-7784-48c0-b5ea-75fbfa01ca5f","name":"生活費","emoji":"💳","color":"#6366f1","kind":"allowance","order":0,"walletId":"ca52fa3a-151c-4f83-bb76-9111d058fb73"}
 - {"id":"6911169e-ee18-4366-a61b-8fac506c7fd6","name":"學貸","emoji":"🏫","color":"#22c55e","kind":"fixed","order":1,"walletId":"07067754-a1e2-4bab-a9b4-04e83683b3c8"}
 - {"id":"fb89365a-80cf-4a10-b46b-bbcd546b97d3","name":"買車基金","emoji":"🚗","color":"#22c55e","kind":"saving","order":2,"walletId":"ca52fa3a-151c-4f83-bb76-9111d058fb73"}
-- {"id":"60f75e8a-9120-4449-9df0-8fad64b05a8b","name":"投資","emoji":"📈","color":"#06b6d4","kind":"saving","order":3,"walletId":"db4467f8-894c-4604-8201-9df975cdaf57"}
+- {"id":"60f75e8a-9120-4449-9df0-8fad64b05a8b","name":"投資0050","emoji":"📈","color":"#06b6d4","kind":"saving","order":3,"walletId":"db4467f8-894c-4604-8201-9df975cdaf57"}
 - {"id":"1d6e586e-40d8-4f0d-82a7-8dd09ead63bb","name":"緊急預備金","emoji":"🛟","color":"#f97316","kind":"saving","order":4,"walletId":"ca52fa3a-151c-4f83-bb76-9111d058fb73"}
 - {"name":"牙套基金","emoji":"🦷","color":"#ec4899","kind":"fixed","id":"a4230ab0-7344-457e-999d-0d0204aae667","order":5,"walletId":"ca52fa3a-151c-4f83-bb76-9111d058fb73"}
 - {"name":"房租","emoji":"🏠","color":"#a855f7","kind":"fixed","id":"d60f942f-fe23-4069-af47-c6696d3480ff","order":6,"walletId":"6ef8599e-8f5f-4699-a07a-15ebaed3a7da"}
