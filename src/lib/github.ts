@@ -26,6 +26,32 @@ function headers(token: string): HeadersInit {
   }
 }
 
+/**
+ * Cache-busting via the URL rather than a `Cache-Control` header.
+ *
+ * The API answers authenticated reads with `private, max-age=60`, so a plain
+ * re-read can be served from the browser cache and miss another device's edit.
+ * The header that suppresses that is not on the CORS safelist, which puts one
+ * more thing in the preflight that has to be allowed for the request to happen
+ * at all — a unique query string achieves the same with nothing to negotiate.
+ */
+function bust(url: string): string {
+  return `${url}&_=${Date.now()}`
+}
+
+/**
+ * fetch() rejects with a bare "Failed to fetch" for everything that stops a
+ * request before a response exists — offline, VPN, a blocking extension, a
+ * firewall. Unreadable on its own, so name the possibilities.
+ */
+async function call(url: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init)
+  } catch {
+    throw new GitHubError('連不到 GitHub — 可能是沒有網路，或被 VPN、防火牆、瀏覽器擴充套件擋住', 0)
+  }
+}
+
 export class GitHubError extends Error {
   status: number
   constructor(message: string, status: number) {
@@ -81,7 +107,7 @@ export function decodeText(b64: string): string {
 export async function checkAccess(
   cfg: Omit<GitHubConfig, 'branch'>,
 ): Promise<{ defaultBranch: string; private: boolean }> {
-  const res = await fetch(`${API}/repos/${cfg.owner}/${cfg.repo}`, {
+  const res = await call(`${API}/repos/${cfg.owner}/${cfg.repo}`, {
     headers: headers(cfg.token),
   })
   if (!res.ok) await fail(res)
@@ -91,9 +117,9 @@ export async function checkAccess(
 
 /** null when the file does not exist yet. */
 export async function getFile(cfg: GitHubConfig, path: string): Promise<RemoteFile | null> {
-  const res = await fetch(
-    `${API}/repos/${cfg.owner}/${cfg.repo}/contents/${encodeURI(path)}?ref=${encodeURIComponent(cfg.branch)}`,
-    { headers: { ...headers(cfg.token), 'Cache-Control': 'no-cache' } },
+  const res = await call(
+    bust(`${API}/repos/${cfg.owner}/${cfg.repo}/contents/${encodeURI(path)}?ref=${encodeURIComponent(cfg.branch)}`),
+    { headers: headers(cfg.token) },
   )
   if (res.status === 404) return null
   if (!res.ok) await fail(res)
@@ -102,9 +128,9 @@ export async function getFile(cfg: GitHubConfig, path: string): Promise<RemoteFi
 }
 
 export async function getBlob(cfg: GitHubConfig, path: string): Promise<Blob | null> {
-  const res = await fetch(
-    `${API}/repos/${cfg.owner}/${cfg.repo}/contents/${encodeURI(path)}?ref=${encodeURIComponent(cfg.branch)}`,
-    { headers: { ...headers(cfg.token), 'Cache-Control': 'no-cache' } },
+  const res = await call(
+    bust(`${API}/repos/${cfg.owner}/${cfg.repo}/contents/${encodeURI(path)}?ref=${encodeURIComponent(cfg.branch)}`),
+    { headers: headers(cfg.token) },
   )
   if (res.status === 404) return null
   if (!res.ok) await fail(res)
@@ -118,9 +144,9 @@ export async function listFolder(
   cfg: GitHubConfig,
   path: string,
 ): Promise<Array<{ name: string; sha: string }>> {
-  const res = await fetch(
-    `${API}/repos/${cfg.owner}/${cfg.repo}/contents/${encodeURI(path)}?ref=${encodeURIComponent(cfg.branch)}`,
-    { headers: { ...headers(cfg.token), 'Cache-Control': 'no-cache' } },
+  const res = await call(
+    bust(`${API}/repos/${cfg.owner}/${cfg.repo}/contents/${encodeURI(path)}?ref=${encodeURIComponent(cfg.branch)}`),
+    { headers: headers(cfg.token) },
   )
   if (res.status === 404) return []
   if (!res.ok) await fail(res)
@@ -136,7 +162,7 @@ export async function deleteFile(
   sha: string,
   message: string,
 ): Promise<void> {
-  const res = await fetch(`${API}/repos/${cfg.owner}/${cfg.repo}/contents/${encodeURI(path)}`, {
+  const res = await call(`${API}/repos/${cfg.owner}/${cfg.repo}/contents/${encodeURI(path)}`, {
     method: 'DELETE',
     headers: { ...headers(cfg.token), 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, sha, branch: cfg.branch }),
@@ -156,7 +182,7 @@ export async function putFile(
   message: string,
   sha?: string,
 ): Promise<string> {
-  const res = await fetch(`${API}/repos/${cfg.owner}/${cfg.repo}/contents/${encodeURI(path)}`, {
+  const res = await call(`${API}/repos/${cfg.owner}/${cfg.repo}/contents/${encodeURI(path)}`, {
     method: 'PUT',
     headers: { ...headers(cfg.token), 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, content: contentBase64, branch: cfg.branch, sha }),
