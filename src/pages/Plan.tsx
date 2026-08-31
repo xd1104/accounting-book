@@ -67,8 +67,16 @@ export function Plan() {
 
   const allowanceAlloc = plan?.allocations.find((a) => a.accountId === plan.allowanceAccountId)
   const walletRows = useMemo(() => allowanceByWallet(data, month), [data, month])
-  /** The same plan, totalled by destination — the list to work from on transfer day. */
-  const transferRows = useMemo(() => allocationByWallet(data, month), [data, month])
+  /**
+   * The same plan, totalled by destination — the list to work from on transfer
+   * day. Cash is left out: it is not somewhere you transfer money to, and how
+   * much of the allowance is held as cash already has its own section below.
+   */
+  const transferRows = useMemo(
+    () => allocationByWallet(data, month).filter((r) => r.kind !== 'cash'),
+    [data, month],
+  )
+  const transferTotal = transferRows.reduce((n, r) => n + r.total, 0)
   const transferLeft = transferRows.reduce((n, r) => n + (r.total - r.done), 0)
 
   /** Split the allowance across wallets — part cash in the wallet, part in the bank. */
@@ -305,7 +313,7 @@ export function Plan() {
             </span>
           </div>
           <p className="text-[11px] text-faint -mt-1">
-            上面是照用途分的，這裡是照「錢要進哪裡」加總 — 轉帳時照這張對就好。
+            上面是照用途分的，這裡是照「錢要進哪個戶頭」加總 — 轉帳時照這張對就好。現金不列入。
           </p>
 
           <div className="space-y-2">
@@ -335,8 +343,8 @@ export function Plan() {
           </div>
 
           <div className="pt-2 border-t border-line flex items-baseline justify-between">
-            <span className="text-sm text-muted">合計</span>
-            <span className="text-lg font-bold tnum">{money(s.allocated, sym)}</span>
+            <span className="text-sm text-muted">要轉的合計</span>
+            <span className="text-lg font-bold tnum">{money(transferTotal, sym)}</span>
           </div>
         </div>
       )}
