@@ -339,3 +339,72 @@ export function dailyTotals(data: AppData, month: string): Array<{ date: string;
   }
   return out
 }
+
+export interface WalletPlanTotal {
+  walletId: string | null
+  name: string
+  emoji: string
+  color: string
+  kind: 'cash' | 'bank' | 'unset'
+  /** 這個月要放進這個存放處的總額 */
+  total: number
+  /** 其中已經勾選「已轉帳」的 */
+  done: number
+  /** 有幾個分配項目放在這裡 */
+  items: number
+}
+
+/**
+ * The whole salary plan totalled by where the money ends up.
+ *
+ * The allocation list is organised by purpose (房租、儲蓄…), which is the right
+ * way to decide the plan but the wrong way to execute it: actually moving the
+ * money means knowing "how much goes into 國泰 this month", and adding that up
+ * by hand across a dozen items is exactly the sort of arithmetic that gets it
+ * wrong. `allowanceByWallet` answers a different question — that one is about
+ * the allowance only, and nets out spending.
+ */
+export function allocationByWallet(data: AppData, month: string): WalletPlanTotal[] {
+  const plan = getPlan(data, month)
+  const total = new Map<string | null, number>()
+  const done = new Map<string | null, number>()
+  const items = new Map<string | null, number>()
+
+  const add = (walletId: string | null, amount: number, isDone: boolean) => {
+    if (!amount) return
+    total.set(walletId, (total.get(walletId) ?? 0) + amount)
+    items.set(walletId, (items.get(walletId) ?? 0) + 1)
+    if (isDone) done.set(walletId, (done.get(walletId) ?? 0) + amount)
+  }
+
+  for (const a of plan?.allocations ?? []) {
+    if (a.splits?.length) {
+      // A split item lands in several places, so it counts toward each of them.
+      for (const s of a.splits) add(s.walletId, s.amount, !!a.done)
+    } else {
+      add(data.accounts.find((x) => x.id === a.accountId)?.walletId ?? null, a.amount, !!a.done)
+    }
+  }
+
+  const out: WalletPlanTotal[] = []
+  for (const [walletId, amount] of total) {
+    const w = walletId ? data.wallets.find((x) => x.id === walletId) : null
+    out.push({
+      walletId,
+      name: w?.name ?? '未指定存放處',
+      emoji: w?.emoji ?? '❓',
+      color: w?.color ?? '#6b7280',
+      kind: w?.kind ?? 'unset',
+      total: amount,
+      done: done.get(walletId) ?? 0,
+      items: items.get(walletId) ?? 0,
+    })
+  }
+
+  // Wallet order first, unspecified last.
+  return out.sort((x, y) => {
+    const ox = data.wallets.findIndex((w) => w.id === x.walletId)
+    const oy = data.wallets.findIndex((w) => w.id === y.walletId)
+    return (ox < 0 ? 99 : ox) - (oy < 0 ? 99 : oy)
+  })
+}

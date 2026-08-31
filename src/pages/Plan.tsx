@@ -5,7 +5,7 @@ import { addMonths, currentPeriod, formatMonthLabel, periodRange } from '../lib/
 import { money } from '../lib/format'
 import { ACCOUNT_KINDS, KIND_LABEL, WALLET_KIND_LABEL } from '../lib/defaults'
 import type { Account, Allocation, AllocationSplit, MonthPlan } from '../lib/types'
-import { allowanceByWallet } from '../lib/budget'
+import { allocationByWallet, allowanceByWallet } from '../lib/budget'
 import { IconCheck, IconChevronL, IconChevronR, IconPlus, IconTrash } from '../components/icons'
 import { Sheet } from '../components/Sheet'
 import { Toggle } from '../components/Toggle'
@@ -67,6 +67,9 @@ export function Plan() {
 
   const allowanceAlloc = plan?.allocations.find((a) => a.accountId === plan.allowanceAccountId)
   const walletRows = useMemo(() => allowanceByWallet(data, month), [data, month])
+  /** The same plan, totalled by destination — the list to work from on transfer day. */
+  const transferRows = useMemo(() => allocationByWallet(data, month), [data, month])
+  const transferLeft = transferRows.reduce((n, r) => n + (r.total - r.done), 0)
 
   /** Split the allowance across wallets — part cash in the wallet, part in the bank. */
   const setSplit = (walletId: string, amount: number) => {
@@ -291,6 +294,52 @@ export function Plan() {
           <IconPlus className="w-4 h-4" /> 新增分配項目
         </button>
       </div>
+
+      {/* totals by destination */}
+      {transferRows.length > 0 && (
+        <div className="bg-surface rounded-3xl p-4 space-y-3">
+          <div className="flex items-baseline justify-between">
+            <span className="font-semibold text-sm">各存放處合計</span>
+            <span className="text-[11px] text-faint">
+              {transferLeft > 0 ? `還要轉 ${money(transferLeft, sym)}` : '✓ 都轉好了'}
+            </span>
+          </div>
+          <p className="text-[11px] text-faint -mt-1">
+            上面是照用途分的，這裡是照「錢要進哪裡」加總 — 轉帳時照這張對就好。
+          </p>
+
+          <div className="space-y-2">
+            {transferRows.map((r) => {
+              const left = r.total - r.done
+              return (
+                <div key={r.walletId ?? 'none'} className="flex items-center gap-2">
+                  <span
+                    className="w-8 h-8 shrink-0 grid place-items-center rounded-full text-base"
+                    style={{ background: `${r.color}22` }}
+                  >
+                    {r.emoji}
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm truncate">{r.name}</span>
+                    <span className="block text-[10px] text-faint">
+                      {r.kind === 'unset' ? '尚未指定' : WALLET_KIND_LABEL[r.kind]} · {r.items} 項
+                      {left > 0 ? ` · 還要轉 ${money(left, sym)}` : ' · 已轉完'}
+                    </span>
+                  </span>
+                  <span className={`tnum font-semibold ${left > 0 ? '' : 'text-ok'}`}>
+                    {money(r.total, sym)}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="pt-2 border-t border-line flex items-baseline justify-between">
+            <span className="text-sm text-muted">合計</span>
+            <span className="text-lg font-bold tnum">{money(s.allocated, sym)}</span>
+          </div>
+        </div>
+      )}
 
       {/* unallocated banner */}
       {plan && plan.income > 0 && (

@@ -47,7 +47,12 @@ export function migrate(raw: unknown): AppData {
 
   const accounts =
     Array.isArray(d.accounts) && d.accounts.length
-      ? d.accounts.map((a) => ({ ...a, walletId: a.walletId ?? fallbackWallet }))
+      ? d.accounts.map((a) => ({
+          // An explicit null is the editor's 「不指定」 and must survive a reload;
+          // only a missing field is v1 data that predates wallets entirely.
+          ...a,
+          walletId: 'walletId' in a ? a.walletId : fallbackWallet,
+        }))
       : defaultAccounts(wallets)
 
   // Existing transactions keep walletId null — "unspecified" is honest here,
