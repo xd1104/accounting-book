@@ -116,6 +116,7 @@ export function serializeMeta(d: AppData): string {
       currencySymbol: d.settings.currencySymbol,
       monthStartDay: d.settings.monthStartDay,
       lastBackupAt: d.settings.lastBackupAt ?? null,
+      carryCash: d.settings.carryCash !== false,
     }) +
     section('存放處', d.wallets) +
     section('分配項目', d.accounts) +
@@ -135,6 +136,8 @@ export function parseMeta(text: string): Meta {
       currencySymbol: (fields.currencySymbol as string) || DEFAULT_SETTINGS.currencySymbol,
       monthStartDay: (fields.monthStartDay as number) || DEFAULT_SETTINGS.monthStartDay,
       lastBackupAt: (fields.lastBackupAt as string) ?? undefined,
+      // Absent in files written before this existed, and the default is on.
+      carryCash: fields.carryCash !== false,
     },
     wallets: wallets.length ? wallets : base.wallets,
     accounts: accounts.length ? accounts : base.accounts,

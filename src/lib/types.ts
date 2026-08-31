@@ -91,6 +91,12 @@ export interface Settings {
   monthStartDay: number
   /** 最後一次匯出備份的時間，用來提醒該備份了 */
   lastBackupAt?: string
+  /**
+   * 月底沒花完的「現金」零用錢是否結轉到下個月。
+   * 只結轉現金 — 留在戶頭裡的零用錢不動，那本來就還在戶頭裡。
+   * undefined 視為開啟。
+   */
+  carryCash?: boolean
 }
 
 export interface AppData {

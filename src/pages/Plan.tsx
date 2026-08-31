@@ -12,7 +12,7 @@ import { Toggle } from '../components/Toggle'
 import { AccountEditor } from '../components/AccountEditor'
 
 export function Plan() {
-  const { data, savePlan, addAccount, updateAccount, addWallet } = useStore()
+  const { data, savePlan, addAccount, updateAccount, addWallet, updateSettings } = useStore()
   const sym = data.settings.currencySymbol
   const [month, setMonth] = useState(() => currentPeriod(data.settings.monthStartDay))
   const [picking, setPicking] = useState(false)
@@ -417,10 +417,23 @@ export function Plan() {
 
         <label className="flex items-center gap-3">
           <span className="text-sm text-muted flex-1">
-            結餘累積
+            每日結餘累積
             <span className="block text-[11px] text-faint">今天沒花完的，明天可以繼續花</span>
           </span>
           <Toggle on={plan?.rollover ?? true} onChange={(v) => write({ rollover: v })} />
+        </label>
+
+        <label className="flex items-center gap-3">
+          <span className="text-sm text-muted flex-1">
+            現金結轉下個月
+            <span className="block text-[11px] text-faint">
+              月底錢包裡沒花完的現金，加進下個月的零用錢。戶頭裡的不結轉
+            </span>
+          </span>
+          <Toggle
+            on={data.settings.carryCash !== false}
+            onChange={(v) => updateSettings({ carryCash: v })}
+          />
         </label>
 
         <div className="pt-1 border-t border-line flex items-baseline justify-between">
@@ -465,6 +478,13 @@ export function Plan() {
                     <span className="block text-sm truncate">{w.name}</span>
                     <span className="block text-[10px] text-faint">
                       {WALLET_KIND_LABEL[w.kind]}
+                      {row && row.carriedIn !== 0 && (
+                        <span className={row.carriedIn > 0 ? 'text-ok' : 'text-bad'}>
+                          {' '}
+                          · 上期結轉 {row.carriedIn > 0 ? '+' : ''}
+                          {money(row.carriedIn, sym)}
+                        </span>
+                      )}
                       {row && row.spent > 0 && ` · 已花 ${money(row.spent, sym)}`}
                     </span>
                   </span>

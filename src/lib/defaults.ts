@@ -33,6 +33,7 @@ export function uid(): string {
 export const DEFAULT_SETTINGS: Settings = {
   currencySymbol: '$',
   monthStartDay: 1,
+  carryCash: true,
 }
 
 // Hue order is validated with the dataviz palette checker (lightness band, chroma

@@ -1,5 +1,5 @@
 import type { AppData, MonthPlan, Txn } from './types'
-import { addDays, daysBetween, periodOf, periodRange, today } from './date'
+import { addDays, addMonths, daysBetween, periodOf, periodRange, today } from './date'
 
 export function emptyPlan(month: string, allowanceAccountId: string | null): MonthPlan {
   return {
@@ -88,8 +88,10 @@ export interface PeriodSummary {
   unallocated: number
   allocationComplete: boolean
 
-  /** 本期零用錢總額 */
+  /** 本期零用錢總額（含上期結轉的現金） */
   allowanceTotal: number
+  /** 其中由上期現金結轉而來的 */
+  carriedIn: number
   /** 每日額度 */
   dailyAllowance: number
   /** 今天的可用額度（rollover 模式下含前幾天沒花完的） */
@@ -139,13 +141,19 @@ export function summarize(data: AppData, month: string, now = today()): PeriodSu
 
   // --- allowance ---
   const allowanceAccountId = plan?.allowanceAccountId ?? null
+  // Cash that survived earlier periods is spendable now, so it belongs in the
+  // pot — and therefore in the daily figure derived from it.
+  const carriedIn = allowanceAccountId ? cashCarryTotal(data, month) : 0
   let dailyAllowance: number
   let allowanceTotal: number
   if (plan?.dailyAllowanceOverride != null) {
+    // A hand-set daily figure is the user overriding the arithmetic, so leave it
+    // alone; the carried cash still counts toward what the month actually holds.
     dailyAllowance = plan.dailyAllowanceOverride
-    allowanceTotal = dailyAllowance * totalDays
+    allowanceTotal = dailyAllowance * totalDays + carriedIn
   } else {
-    allowanceTotal = allocations.find((a) => a.accountId === allowanceAccountId)?.amount ?? 0
+    const planned = allocations.find((a) => a.accountId === allowanceAccountId)?.amount ?? 0
+    allowanceTotal = planned + carriedIn
     dailyAllowance = totalDays > 0 ? allowanceTotal / totalDays : 0
   }
 
@@ -200,6 +208,7 @@ export function summarize(data: AppData, month: string, now = today()): PeriodSu
     unallocated,
     allocationComplete: allocations.length > 0 && allocations.every((a) => a.done),
     allowanceTotal,
+    carriedIn,
     dailyAllowance,
     todayBudget,
     todayRemaining,
@@ -223,6 +232,8 @@ export interface WalletBalance {
   kind: 'cash' | 'bank' | 'unset'
   /** 這個月配到這裡的零用錢 */
   allocated: number
+  /** 上期結轉進來的（只有現金會結轉） */
+  carriedIn: number
   /** 從這裡花掉的零用錢 */
   spent: number
   /** 收進這裡、算回零用錢的 */
@@ -234,7 +245,14 @@ export interface WalletBalance {
  * Split the allowance across where the money physically sits, so "how much cash
  * is left in my wallet" and "how much is left in the bank" are separate answers.
  */
-export function allowanceByWallet(data: AppData, month: string): WalletBalance[] {
+interface RawWalletFigures {
+  allocated: Map<string | null, number>
+  spent: Map<string | null, number>
+  income: Map<string | null, number>
+}
+
+/** One period's allowance figures per wallet, before anything is carried in. */
+function rawAllowanceByWallet(data: AppData, month: string): RawWalletFigures {
   const plan = getPlan(data, month)
   const allowanceId = plan?.allowanceAccountId ?? null
 
@@ -259,14 +277,91 @@ export function allowanceByWallet(data: AppData, month: string): WalletBalance[]
     bucket.set(t.walletId, (bucket.get(t.walletId) ?? 0) + t.amount)
   }
 
-  const ids = new Set<string | null>([...allocated.keys(), ...spent.keys(), ...income.keys()])
+  return { allocated, spent, income }
+}
+
+/** The earliest period the ledger knows anything about. */
+function firstPeriod(data: AppData): string | null {
+  const start = data.settings.monthStartDay
+  let min: string | null = null
+  for (const key of Object.keys(data.plans)) if (!min || key < min) min = key
+  for (const t of data.txns) {
+    const p = periodOf(t.date, start)
+    if (!min || p < min) min = p
+  }
+  return min
+}
+
+/** A bad date in the data must not turn the fold below into a very long loop. */
+const MAX_CARRY_PERIODS = 240
+
+/**
+ * Cash left over from earlier periods, per wallet.
+ *
+ * Physical cash does not reset at month end — whatever is still in the wallet on
+ * the 31st is the same money that is in it on the 1st, so next month's cash
+ * allowance starts with it. Money left sitting in a bank account is deliberately
+ * not carried: it never left the account, and counting it as new allowance would
+ * hand out the same balance again every month.
+ *
+ * Folded forward from the first period the ledger knows about rather than
+ * computed recursively, because each period's leftover already includes what was
+ * carried into it. Periods with no allowance source contribute nothing — before
+ * the first plan exists there is no allowance to have a balance of.
+ */
+export function cashCarryByWallet(data: AppData, month: string): Map<string, number> {
+  const out = new Map<string, number>()
+  if (data.settings.carryCash === false) return out
+
+  const cashIds = data.wallets.filter((w) => w.kind === 'cash').map((w) => w.id)
+  if (!cashIds.length) return out
+
+  const start = firstPeriod(data)
+  if (!start || start >= month) return out
+
+  for (const id of cashIds) out.set(id, 0)
+
+  let p = start
+  for (let i = 0; p < month && i < MAX_CARRY_PERIODS; i++, p = addMonths(p, 1)) {
+    if (!getPlan(data, p)?.allowanceAccountId) continue
+    const raw = rawAllowanceByWallet(data, p)
+    for (const id of cashIds) {
+      const left =
+        (raw.allocated.get(id) ?? 0) +
+        (out.get(id) ?? 0) +
+        (raw.income.get(id) ?? 0) -
+        (raw.spent.get(id) ?? 0)
+      out.set(id, left)
+    }
+  }
+  return out
+}
+
+export function cashCarryTotal(data: AppData, month: string): number {
+  let n = 0
+  for (const v of cashCarryByWallet(data, month).values()) n += v
+  return n
+}
+
+export function allowanceByWallet(data: AppData, month: string): WalletBalance[] {
+  const { allocated, spent, income } = rawAllowanceByWallet(data, month)
+  const carry = cashCarryByWallet(data, month)
+
+  const ids = new Set<string | null>([
+    ...allocated.keys(),
+    ...spent.keys(),
+    ...income.keys(),
+    // A wallet holding nothing but last month's leftover still has a balance.
+    ...[...carry.entries()].filter(([, v]) => v !== 0).map(([k]) => k),
+  ])
   const out: WalletBalance[] = []
   for (const id of ids) {
     const w = id ? data.wallets.find((x) => x.id === id) : null
     const a = allocated.get(id) ?? 0
     const s = spent.get(id) ?? 0
     const inc = income.get(id) ?? 0
-    if (a === 0 && s === 0 && inc === 0) continue
+    const carried = (id && carry.get(id)) || 0
+    if (a === 0 && s === 0 && inc === 0 && carried === 0) continue
     out.push({
       walletId: id,
       name: w?.name ?? '未指定',
@@ -274,9 +369,10 @@ export function allowanceByWallet(data: AppData, month: string): WalletBalance[]
       color: w?.color ?? '#6b7280',
       kind: w?.kind ?? 'unset',
       allocated: a,
+      carriedIn: carried,
       spent: s,
       income: inc,
-      left: a + inc - s,
+      left: a + carried + inc - s,
     })
   }
 

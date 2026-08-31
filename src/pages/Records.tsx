@@ -97,9 +97,15 @@ export function Records({ onEditTxn }: { onEditTxn: (id: string) => void }) {
                   {r.emoji}
                 </span>
                 <span className="flex-1 min-w-0 truncate text-muted">{r.name}</span>
-                {r.allocated > 0 || r.income > 0 ? (
+                {r.allocated > 0 || r.income > 0 || r.carriedIn !== 0 ? (
                   <>
                     <span className="text-[11px] text-faint tnum">
+                      {r.carriedIn !== 0 && (
+                        <span className={r.carriedIn > 0 ? 'text-ok' : 'text-bad'}>
+                          結轉 {r.carriedIn > 0 ? '+' : ''}
+                          {money(r.carriedIn, sym)}{' · '}
+                        </span>
+                      )}
                       已花 {money(r.spent, sym)}
                       {r.income > 0 && (
                         <span className="text-ok"> +{money(r.income, sym)}</span>
