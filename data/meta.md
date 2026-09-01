@@ -2,6 +2,7 @@
 currencySymbol: "$"
 monthStartDay: 1
 lastBackupAt: null
+carryCash: true
 ---
 
 ## 存放處
