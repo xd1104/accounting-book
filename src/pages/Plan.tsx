@@ -17,6 +17,8 @@ export function Plan() {
   const [month, setMonth] = useState(() => currentPeriod(data.settings.monthStartDay))
   const [picking, setPicking] = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | 'new' | null>(null)
+  /** Reveals the per-row remove buttons — twelve of them on show is all noise. */
+  const [editing, setEditing] = useState(false)
 
   const { plan, carried, from } = useMemo(() => resolvePlan(data, month), [data, month])
   const s = useMemo(() => summarize(data, month), [data, month])
@@ -66,6 +68,8 @@ export function Plan() {
   const unused = accounts.filter((a) => !plan?.allocations.some((x) => x.accountId === a.id))
 
   const allowanceAlloc = plan?.allocations.find((a) => a.accountId === plan.allowanceAccountId)
+  /** Wallets the user added to the split by hand this session. */
+  const [shownSplits, setShownSplits] = useState<string[]>([])
   const walletRows = useMemo(() => allowanceByWallet(data, month), [data, month])
   /**
    * The same plan, totalled by destination — the list to work from on transfer
@@ -78,6 +82,34 @@ export function Plan() {
   )
   const transferTotal = transferRows.reduce((n, r) => n + r.total, 0)
   const transferLeft = transferRows.reduce((n, r) => n + (r.total - r.done), 0)
+
+  /**
+   * Which wallets the split section lists: the ones actually holding some of
+   * this month's allowance, plus any the user just added. The rest are offered
+   * as chips, because a column of zeroes is not information.
+   */
+  const splitRows = useMemo(() => {
+    if (!plan?.allowanceAccountId || !allowanceAlloc) return []
+    const home = accounts.find((a) => a.id === plan.allowanceAccountId)?.walletId ?? null
+    return wallets
+      .map((w) => {
+        const split = allowanceAlloc.splits?.find((x) => x.walletId === w.id)
+        const implied = !allowanceAlloc.splits?.length && home === w.id ? allowanceAlloc.amount : 0
+        const row = walletRows.find((r) => r.walletId === w.id)
+        return { wallet: w, amount: split?.amount ?? implied, row }
+      })
+      .filter(
+        (r) =>
+          r.amount !== 0 ||
+          shownSplits.includes(r.wallet.id) ||
+          (r.row && (r.row.carriedIn !== 0 || r.row.spent > 0)),
+      )
+  }, [plan, allowanceAlloc, accounts, wallets, walletRows, shownSplits])
+
+  const restWallets = useMemo(
+    () => wallets.filter((w) => !splitRows.some((r) => r.wallet.id === w.id)),
+    [wallets, splitRows],
+  )
 
   /** Split the allowance across wallets — part cash in the wallet, part in the bank. */
   const setSplit = (walletId: string, amount: number) => {
@@ -171,10 +203,10 @@ export function Plan() {
         </button>
       </div>
 
-      {/* income */}
+      {/* income, with how much of it is spoken for — the same question, so one card */}
       <div className="bg-surface rounded-3xl p-4">
-        <label className="block text-sm text-muted mb-2">本月收入</label>
-        <div className="flex items-center gap-2">
+        <label className="block text-sm text-muted mb-1">本月收入</label>
+        <div className="flex items-baseline gap-1.5">
           <span className="text-2xl text-faint">{sym}</span>
           <input
             type="number"
@@ -185,6 +217,31 @@ export function Plan() {
             className="flex-1 bg-transparent text-3xl font-bold tnum outline-none min-w-0 placeholder:text-faint"
           />
         </div>
+
+        {plan && plan.income > 0 && (
+          <>
+            <div className="mt-3 h-1.5 rounded-full bg-surface2 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-[width] duration-500 ${
+                  s.unallocated < 0 ? 'bg-bad' : s.unallocated === 0 ? 'bg-ok' : 'bg-brand'
+                }`}
+                style={{ width: `${Math.min(100, (s.allocated / plan.income) * 100)}%` }}
+              />
+            </div>
+            <div className="mt-2 flex items-baseline justify-between text-xs">
+              <span className="text-muted tnum">已分配 {money(s.allocated, sym)}</span>
+              <span
+                className={`tnum font-semibold ${
+                  s.unallocated === 0 ? 'text-ok' : s.unallocated < 0 ? 'text-bad' : 'text-warn'
+                }`}
+              >
+                {s.unallocated === 0
+                  ? '✓ 分配完畢'
+                  : `${s.unallocated > 0 ? '還沒分配' : '超出收入'} ${money(Math.abs(s.unallocated), sym)}`}
+              </span>
+            </div>
+          </>
+        )}
       </div>
 
       {carried && from && (
@@ -198,11 +255,23 @@ export function Plan() {
 
       {/* allocations, grouped by type */}
       <div className="bg-surface rounded-3xl p-2">
-        <div className="flex items-center justify-between px-3 pt-2 pb-1">
-          <span className="font-semibold text-sm">分配項目</span>
-          <span className="text-xs tnum text-muted">
-            {s.allocated > 0 && `已分配 ${money(s.allocated, sym)}`}
+        <div className="flex items-center justify-between pl-3 pr-1 pt-2 pb-1">
+          <span className="font-semibold text-sm">
+            分配項目
+            <span className="ml-2 text-xs font-normal text-faint tnum">
+              {(plan?.allocations.length ?? 0) > 0 && `${plan?.allocations.length} 項`}
+            </span>
           </span>
+          {(plan?.allocations.length ?? 0) > 0 && (
+            <button
+              onClick={() => setEditing((v) => !v)}
+              className={`h-8 px-3 rounded-full text-xs font-semibold active:scale-95 transition ${
+                editing ? 'bg-brand text-white' : 'text-brand active:bg-surface2'
+              }`}
+            >
+              {editing ? '完成' : '編輯'}
+            </button>
+          )}
         </div>
 
         {groups.length === 0 ? (
@@ -216,17 +285,17 @@ export function Plan() {
             const subtotal = g.rows.reduce((n, r) => n + r.alloc.amount, 0)
             return (
               <div key={g.kind} className="pt-2">
-                <div className="flex items-baseline justify-between px-3 pb-1">
-                  <span className="text-[11px] font-semibold text-muted">{KIND_LABEL[g.kind]}</span>
-                  <span className="text-[11px] text-faint tnum">{money(subtotal, sym)}</span>
+                <div className="flex items-baseline justify-between px-3 pt-1 pb-1.5">
+                  <span className="text-xs font-semibold text-ink/70">{KIND_LABEL[g.kind]}</span>
+                  <span className="text-xs text-faint tnum">{money(subtotal, sym)}</span>
                 </div>
                 <div className="divide-y divide-line">
                   {g.rows.map(({ alloc: a, account: acc }) => (
-                    <div key={a.accountId} className="flex items-center gap-2 px-2 py-2.5">
+                    <div key={a.accountId} className="flex items-center gap-2 px-2 py-2">
                       <button
                         onClick={() => toggleDone(a.accountId)}
                         aria-label={a.done ? '標記為未轉帳' : '標記為已轉帳'}
-                        className={`w-7 h-7 shrink-0 grid place-items-center rounded-full transition active:scale-90 ${
+                        className={`w-6 h-6 shrink-0 grid place-items-center rounded-full transition active:scale-90 ${
                           a.done ? 'bg-ok text-white' : 'border-2 border-line text-transparent'
                         }`}
                       >
@@ -239,8 +308,8 @@ export function Plan() {
                         className="flex items-center gap-2 flex-1 min-w-0 text-left active:opacity-60"
                       >
                         <span
-                          className="w-8 h-8 shrink-0 grid place-items-center rounded-full text-base"
-                          style={{ background: `${acc?.color ?? '#6b7280'}22` }}
+                          className="w-8 h-8 shrink-0 grid place-items-center rounded-xl text-base"
+                          style={{ background: `${acc?.color ?? '#6b7280'}1f` }}
                         >
                           {acc?.emoji ?? '💼'}
                         </span>
@@ -266,7 +335,9 @@ export function Plan() {
                         </span>
                       </button>
 
-                      {/* Once split across wallets the total is derived, so editing it
+                      {/* Borderless so twelve rows read as one column of numbers; the
+                          field only looks like a field once it is being edited.
+                          Once split across wallets the total is derived, so editing it
                           here would just contradict the split below. */}
                       <input
                         type="number"
@@ -276,17 +347,19 @@ export function Plan() {
                         readOnly={!!a.splits?.length}
                         title={a.splits?.length ? '由下方「零用錢放在哪」的金額加總' : undefined}
                         onChange={(e) => setAllocation(a.accountId, Number(e.target.value) || 0)}
-                        className={`w-24 h-9 px-2 text-right rounded-lg tnum text-sm outline-none ${
-                          a.splits?.length ? 'bg-transparent text-muted' : 'bg-surface2'
+                        className={`w-[88px] h-9 px-2 shrink-0 text-right rounded-lg tnum text-sm font-semibold outline-none bg-transparent transition ${
+                          a.splits?.length ? 'text-muted' : 'focus:bg-surface2'
                         }`}
                       />
-                      <button
-                        onClick={() => removeAllocation(a.accountId)}
-                        aria-label="移除"
-                        className="w-8 h-8 shrink-0 grid place-items-center rounded-lg text-faint active:text-bad"
-                      >
-                        <IconTrash className="w-4 h-4" />
-                      </button>
+                      {editing && (
+                        <button
+                          onClick={() => removeAllocation(a.accountId)}
+                          aria-label="移除"
+                          className="w-8 h-8 shrink-0 grid place-items-center rounded-lg text-faint active:text-bad"
+                        >
+                          <IconTrash className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -346,24 +419,6 @@ export function Plan() {
             <span className="text-sm text-muted">要轉的合計</span>
             <span className="text-lg font-bold tnum">{money(transferTotal, sym)}</span>
           </div>
-        </div>
-      )}
-
-      {/* unallocated banner */}
-      {plan && plan.income > 0 && (
-        <div
-          className={`rounded-2xl px-4 py-3 text-sm flex items-center justify-between ${
-            s.unallocated === 0
-              ? 'bg-ok/12 text-ok'
-              : s.unallocated < 0
-                ? 'bg-bad/12 text-bad'
-                : 'bg-warn/12 text-warn'
-          }`}
-        >
-          <span className="font-medium">
-            {s.unallocated === 0 ? '✓ 全部分配完畢' : s.unallocated > 0 ? '還沒分配' : '超出收入'}
-          </span>
-          <span className="tnum font-bold">{money(Math.abs(s.unallocated), sym)}</span>
         </div>
       )}
 
@@ -457,65 +512,65 @@ export function Plan() {
             一部分放錢包當現金、一部分留在戶頭的話，在這裡填。記帳時選付款來源，就能分開算結餘。
           </p>
 
-          <div className="space-y-2">
-            {wallets.map((w) => {
-              const split = allowanceAlloc.splits?.find((s) => s.walletId === w.id)
-              const implied =
-                !allowanceAlloc.splits?.length &&
-                (accounts.find((a) => a.id === plan.allowanceAccountId)?.walletId ?? null) === w.id
-                  ? allowanceAlloc.amount
-                  : 0
-              const row = walletRows.find((r) => r.walletId === w.id)
-              return (
-                <div key={w.id} className="flex items-center gap-2">
-                  <span
-                    className="w-8 h-8 shrink-0 grid place-items-center rounded-full text-base"
-                    style={{ background: `${w.color}22` }}
-                  >
-                    {w.emoji}
+          {/* One row per wallet: the amount to put there, and what is left of it.
+              These used to be two separate lists of the same wallets. */}
+          <div className="space-y-2.5">
+            {splitRows.map(({ wallet: w, amount, row }) => (
+              <div key={w.id} className="flex items-center gap-2">
+                <span
+                  className="w-8 h-8 shrink-0 grid place-items-center rounded-xl text-base"
+                  style={{ background: `${w.color}1f` }}
+                >
+                  {w.emoji}
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm truncate">{w.name}</span>
+                  <span className="block text-[10px] text-faint truncate">
+                    {row && (row.allocated > 0 || row.income > 0 || row.carriedIn !== 0) ? (
+                      <>
+                        還剩{' '}
+                        <b className={row.left < 0 ? 'text-bad' : 'text-ok'}>
+                          {money(row.left, sym)}
+                        </b>
+                        {row.carriedIn !== 0 ? (
+                          <span className={row.carriedIn > 0 ? 'text-ok' : 'text-bad'}>
+                            {' · 結轉 '}
+                            {row.carriedIn > 0 ? '+' : ''}
+                            {money(row.carriedIn, sym)}
+                          </span>
+                        ) : (
+                          row.spent > 0 && ` · 已花 ${money(row.spent, sym)}`
+                        )}
+                      </>
+                    ) : (
+                      WALLET_KIND_LABEL[w.kind]
+                    )}
                   </span>
-                  <span className="flex-1 min-w-0">
-                    <span className="block text-sm truncate">{w.name}</span>
-                    <span className="block text-[10px] text-faint">
-                      {WALLET_KIND_LABEL[w.kind]}
-                      {row && row.carriedIn !== 0 && (
-                        <span className={row.carriedIn > 0 ? 'text-ok' : 'text-bad'}>
-                          {' '}
-                          · 上期結轉 {row.carriedIn > 0 ? '+' : ''}
-                          {money(row.carriedIn, sym)}
-                        </span>
-                      )}
-                      {row && row.spent > 0 && ` · 已花 ${money(row.spent, sym)}`}
-                    </span>
-                  </span>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    value={split?.amount ?? implied ?? ''}
-                    placeholder="0"
-                    onChange={(e) => setSplit(w.id, Number(e.target.value) || 0)}
-                    className="w-24 h-9 px-2 text-right rounded-lg bg-surface2 tnum text-sm outline-none"
-                  />
-                </div>
-              )
-            })}
+                </span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={amount || ''}
+                  placeholder="0"
+                  onChange={(e) => setSplit(w.id, Number(e.target.value) || 0)}
+                  className="w-[88px] h-9 px-2 shrink-0 text-right rounded-lg bg-surface2 tnum text-sm font-semibold outline-none"
+                />
+              </div>
+            ))}
           </div>
 
-          {walletRows.length > 0 && (
-            <div className="pt-2 border-t border-line space-y-1.5">
-              {walletRows.map((r) => (
-                <div key={r.walletId ?? 'none'} className="flex items-center justify-between text-sm">
-                  <span className="text-muted">
-                    {r.emoji} {r.name} {r.allocated > 0 || r.income > 0 ? '還剩' : '已花'}
-                  </span>
-                  <span
-                    className={`tnum font-semibold ${
-                      r.allocated > 0 || r.income > 0 ? (r.left < 0 ? 'text-bad' : '') : 'text-muted'
-                    }`}
-                  >
-                    {money(r.allocated > 0 || r.income > 0 ? r.left : r.spent, sym)}
-                  </span>
-                </div>
+          {/* Wallets holding nothing this month are one tap away rather than
+              five rows of zeroes. */}
+          {restWallets.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {restWallets.map((w) => (
+                <button
+                  key={w.id}
+                  onClick={() => setShownSplits((v) => [...v, w.id])}
+                  className="h-8 px-3 rounded-full bg-surface2 text-xs text-muted active:scale-95 transition"
+                >
+                  + {w.emoji} {w.name}
+                </button>
               ))}
             </div>
           )}

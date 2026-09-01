@@ -9,7 +9,7 @@ interface Props {
   children?: ReactNode
 }
 
-export function Ring({ progress, size = 208, stroke = 16, color, children }: Props) {
+export function Ring({ progress, size = 208, stroke = 13, color, children }: Props) {
   const r = (size - stroke) / 2
   const c = 2 * Math.PI * r
   const p = Math.max(0, Math.min(progress, 1))
@@ -39,19 +39,21 @@ export function Ring({ progress, size = 208, stroke = 16, color, children }: Pro
           style={{ transition: 'stroke-dashoffset 0.5s cubic-bezier(0.32,0.72,0,1), stroke 0.3s' }}
         />
         {over && (
-          // A second faint arc hints at how far past the limit we are.
+          // How far past the limit, as a thin inner arc. Deliberately faint and
+          // capped short of a full circle: at 3x over, a second solid ring inside
+          // a solid one just reads as a red blob, and the number already says it.
           <circle
             cx={size / 2}
             cy={size / 2}
-            r={r - stroke - 3}
+            r={r - stroke - 4}
             fill="none"
             stroke={color}
-            strokeWidth={3}
+            strokeWidth={2.5}
             strokeLinecap="round"
-            opacity={0.45}
-            strokeDasharray={2 * Math.PI * (r - stroke - 3)}
+            opacity={0.3}
+            strokeDasharray={2 * Math.PI * (r - stroke - 4)}
             strokeDashoffset={
-              2 * Math.PI * (r - stroke - 3) * (1 - Math.min(progress - 1, 1))
+              2 * Math.PI * (r - stroke - 4) * (1 - Math.min(progress - 1, 0.92))
             }
           />
         )}

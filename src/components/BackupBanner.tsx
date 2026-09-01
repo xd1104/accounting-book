@@ -32,7 +32,7 @@ export function BackupBanner() {
   }
 
   return (
-    <div className="rounded-3xl p-4 bg-warn/12">
+    <div className="rounded-3xl p-3.5 bg-warn/12">
       <div className="flex items-start gap-2">
         <span className="text-lg leading-none">⚠️</span>
         <div className="flex-1 min-w-0">
@@ -63,7 +63,7 @@ export function BackupBanner() {
       <button
         onClick={run}
         disabled={busy}
-        className="w-full h-10 mt-3 rounded-2xl bg-warn text-white text-sm font-semibold active:scale-[0.98] transition disabled:opacity-50"
+        className="h-9 px-4 mt-2.5 ml-7 rounded-full bg-warn text-white text-xs font-semibold active:scale-95 transition disabled:opacity-50"
       >
         {busy ? '匯出中…' : '立即匯出備份'}
       </button>
