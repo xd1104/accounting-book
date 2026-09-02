@@ -148,7 +148,9 @@ function DailyChart({
   // 30 天的長條每根只有 8.9px 寬，手指點不準。改成在整張圖上左右滑動選日期：
   // 落點除以容器寬度換算成索引，個別長條就不需要各自可點了。
   const chartRef = useRef<HTMLDivElement>(null)
-  const drag = useRef<{ on: boolean; startX: number }>({ on: false, startX: 0 })
+  const drag = useRef<{ on: boolean; startX: number; startY: number; prev: number | null; locked: boolean }>(
+    { on: false, startX: 0, startY: 0, prev: null, locked: false },
+  )
   const maxSpend = Math.max(...data.map((d) => d.expense), 0)
   const top = Math.max(maxSpend, allowance) * 1.15 || 1
   const peakIndex = maxSpend > 0 ? data.findIndex((d) => d.expense === maxSpend) : -1
@@ -188,22 +190,45 @@ function DailyChart({
         ref={chartRef}
         role="img"
         aria-label={`每日支出長條圖，${data.length} 天，最高 ${money(maxSpend, symbol)}。左右滑動選擇日期。`}
-        style={{ touchAction: 'none' }}
+        /* pan-y 而不是 none：垂直方向交還給瀏覽器捲頁面。
+           圖表橫跨整個內容寬度又落在拇指常按的位置，設成 none 會讓整片區域捲不動
+           —— 那正是 Benson 抱怨過的「用到一半沒辦法上下滑」。 */
+        style={{ touchAction: 'pan-y' }}
         onPointerDown={(e) => {
           const i = indexAt(e.clientX)
           if (i == null) return
-          e.currentTarget.setPointerCapture(e.pointerId)
-          drag.current = { on: true, startX: e.clientX }
+          // 先記住原本選的是哪天：萬一這一下其實是要捲頁面，等等要還原。
+          drag.current = { on: true, startX: e.clientX, startY: e.clientY, prev: sel, locked: false }
           setSel(sel === i ? null : i)
         }}
         onPointerMove={(e) => {
-          // 位移小於 6px 當成點擊，不要把「再點一次取消」又選回來
-          if (!drag.current.on || Math.abs(e.clientX - drag.current.startX) < 6) return
+          const d = drag.current
+          if (!d.on) return
+          const dx = e.clientX - d.startX
+          const dy = e.clientY - d.startY
+          if (!d.locked) {
+            // 位移小於 6px 當成點擊，不要把「再點一次取消」又選回來
+            if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return
+            if (Math.abs(dy) > Math.abs(dx)) {
+              // 垂直手勢：使用者要捲頁面。還原選取、放手讓瀏覽器接手。
+              d.on = false
+              setSel(d.prev)
+              return
+            }
+            // 確定是水平拖曳才抓 pointer，免得干擾瀏覽器接管捲動
+            d.locked = true
+            e.currentTarget.setPointerCapture(e.pointerId)
+          }
           const i = indexAt(e.clientX)
           if (i != null) setSel(i)
         }}
         onPointerUp={() => (drag.current.on = false)}
-        onPointerCancel={() => (drag.current.on = false)}
+        onPointerCancel={() => {
+          // 瀏覽器在我們判斷方向之前就決定要捲動了，把選取還原
+          const d = drag.current
+          if (d.on && !d.locked) setSel(d.prev)
+          d.on = false
+        }}
         className="relative h-32"
       >
         {/* threshold — dashed because it is a limit, not a gridline */}

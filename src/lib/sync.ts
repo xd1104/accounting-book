@@ -59,21 +59,45 @@ interface RemoteSnapshot {
   months: MonthFile[]
   monthShas: Record<string, string>
   empty: boolean
+  /** 懶讀時只拿到 sha、沒抓內容的月份。只有衝突畫面需要把它們補回來。 */
+  skipped: string[]
 }
 
-async function readRemote(cfg: SyncConfig): Promise<RemoteSnapshot> {
+/**
+ * 讀一次遠端。
+ *
+ * `lazy` 時只抓「sha 跟這台裝置記得的不一樣」的月份。
+ *
+ * 目錄列表本來就把每個檔的 sha 一起給了，而 GitHub 的 blob sha 是內容定址的
+ * ——sha 一樣就是內容一樣，抓回來也只會得到同一份東西。原本每次同步都把
+ * 每個月份檔重抓一遍：記一年就是 15 個請求、三年 39 個，而且開 App、
+ * 每次切回前景、每次編輯後 4 秒都會再來一遍。序列化的請求乘上 4G 的往返延遲，
+ * 三年份一次同步要十秒以上。
+ *
+ * 沒抓內容的月份記在 `skipped`：合併只會用到「sha 有變」的月份（那些一定抓過），
+ * 所以平常不必補；只有衝突畫面要報「雲端有幾筆」時才補，見 `fillSkipped`。
+ */
+async function readRemote(cfg: SyncConfig, lazy = false): Promise<RemoteSnapshot> {
   const metaFile = await getFile(cfg, META_PATH)
   const entries = await listFolder(cfg, MONTH_DIR)
   const months: MonthFile[] = []
   const monthShas: Record<string, string> = {}
+  const skipped: string[] = []
 
-  for (const { name } of entries) {
+  for (const { name, sha } of entries) {
     if (!name.endsWith('.md')) continue
     const month = name.slice(0, -3)
-    const f = await getFile(cfg, monthPath(month))
+    const path = monthPath(month)
+    // sha 缺席就照抓 —— 拿不準的時候多一個請求，比漏掉一次別台的修改好。
+    if (lazy && sha && cfg.shas[path] === sha) {
+      monthShas[path] = sha
+      skipped.push(month)
+      continue
+    }
+    const f = await getFile(cfg, path)
     if (!f) continue
     months.push(parseMonth(month, f.text))
-    monthShas[monthPath(month)] = f.sha
+    monthShas[path] = f.sha
   }
 
   return {
@@ -82,7 +106,25 @@ async function readRemote(cfg: SyncConfig): Promise<RemoteSnapshot> {
     months,
     monthShas,
     empty: !metaFile && entries.length === 0,
+    skipped,
   }
+}
+
+/**
+ * 把懶讀時跳過的月份補抓回來。
+ *
+ * 只有衝突畫面需要：那個畫面會顯示「雲端 N 筆記錄 · 覆蓋這台裝置」，
+ * 而按下去就會蓋掉這台還沒上傳的修改 —— 在一個選錯就會弄丟資料的畫面上
+ * 少報一筆都不行。衝突本來就少見，多幾個請求換一個一定正確的數字很划算。
+ */
+async function fillSkipped(cfg: SyncConfig, remote: RemoteSnapshot): Promise<RemoteSnapshot> {
+  if (!remote.skipped.length) return remote
+  const months = [...remote.months]
+  for (const month of remote.skipped) {
+    const f = await getFile(cfg, monthPath(month))
+    if (f) months.push(parseMonth(month, f.text))
+  }
+  return { ...remote, months, skipped: [] }
 }
 
 /**
@@ -102,7 +144,8 @@ export async function syncOnce(
   local: AppData,
   hasLocalHistory: boolean,
 ): Promise<SyncOutcome> {
-  const remote = await readRemote(cfg)
+  // 新裝置（`hasLocalHistory` 為 false）整份都要，所以不懶讀。
+  const remote = await readRemote(cfg, hasLocalHistory)
 
   // Nothing there yet — seed the repo from this device.
   if (remote.empty) {
@@ -148,7 +191,15 @@ export async function syncOnce(
     else if (localMoved) toPush.push(path)
   }
 
-  if (conflicts.length) return { action: 'conflict', paths: conflicts, remote: remoteData }
+  if (conflicts.length) {
+    // 這裡才把跳過的月份補齊 —— 衝突畫面要報的「雲端有幾筆」必須是完整的。
+    const full = await fillSkipped(cfg, remote)
+    const fullRemote =
+      full === remote
+        ? remoteData
+        : assemble(full.meta ?? parseMeta(serializeMeta(local)), full.months)
+    return { action: 'conflict', paths: conflicts, remote: fullRemote }
+  }
 
   if (!toPush.length && !toPull.length) return { action: 'inSync' }
 

@@ -46,12 +46,46 @@ export function resolvePlan(
   }
 }
 
+/**
+ * 所有交易，依「預算期間」分桶，走訪一次。
+ *
+ * 結轉（`cashCarryByWallet`）是從最早的期間往前逐月疊加的 —— 那個形狀是刻意的，
+ * 不能改成遞迴。但如果每一期都重新 filter 一次全部交易，成本就是
+ * 「月份數 × 交易筆數」，會隨帳本年齡二次成長：實測 2,016 筆／36 個月時，
+ * 光是打開統計頁就要 2 秒。分桶一次之後同一份資料的每次查詢都是 O(1) 取用。
+ *
+ * ⚠️ 快取用 WeakMap、以 `data` 物件本身當 key，前提是
+ * **store 每次修改都產生新的 AppData 物件**（`store.tsx` 的 `mutate()` 目前是
+ * `{ ...fn(prev) }`）。哪天有人把 store 改成原地 push/splice 既有的陣列，
+ * 這裡就會回答上一版的數字，而且**不會有任何錯誤訊息**——畫面只是安靜地不更新。
+ * 要改 store 的人請先看這裡。
+ *
+ * `monthStartDay` 一起記進去：改發薪日會讓分桶結果整個不同。
+ */
+const bucketCache = new WeakMap<AppData, { start: number; map: Map<string, Txn[]> }>()
+
+function txnsByPeriod(data: AppData): Map<string, Txn[]> {
+  const start = data.settings.monthStartDay
+  const hit = bucketCache.get(data)
+  if (hit && hit.start === start) return hit.map
+
+  const map = new Map<string, Txn[]>()
+  for (const t of data.txns) {
+    const p = periodOf(t.date, start)
+    const arr = map.get(p)
+    if (arr) arr.push(t)
+    else map.set(p, [t])
+  }
+  bucketCache.set(data, { start, map })
+  return map
+}
+
 /** Transactions belonging to a budget period, newest first. */
 export function txnsInPeriod(data: AppData, month: string): Txn[] {
-  const start = data.settings.monthStartDay
-  return data.txns
-    .filter((t) => periodOf(t.date, start) === month)
-    .sort((a, b) => (a.date === b.date ? b.createdAt.localeCompare(a.createdAt) : b.date.localeCompare(a.date)))
+  // 複製一份再排序：桶子是共用的快取，就地排序會改到別人拿到的東西。
+  return [...(txnsByPeriod(data).get(month) ?? [])].sort((a, b) =>
+    a.date === b.date ? b.createdAt.localeCompare(a.createdAt) : b.date.localeCompare(a.date),
+  )
 }
 
 /**
@@ -271,7 +305,8 @@ function rawAllowanceByWallet(data: AppData, month: string): RawWalletFigures {
 
   const spent = new Map<string | null, number>()
   const income = new Map<string | null, number>()
-  for (const t of txnsInPeriod(data, month)) {
+  // 這裡只是加總，順序無所謂 —— 直接吃桶子，省掉每一期一次排序。
+  for (const t of txnsByPeriod(data).get(month) ?? []) {
     if (!touchesAllowance(t, allowanceId)) continue
     const bucket = t.type === 'expense' ? spent : income
     bucket.set(t.walletId, (bucket.get(t.walletId) ?? 0) + t.amount)
@@ -282,13 +317,10 @@ function rawAllowanceByWallet(data: AppData, month: string): RawWalletFigures {
 
 /** The earliest period the ledger knows anything about. */
 function firstPeriod(data: AppData): string | null {
-  const start = data.settings.monthStartDay
   let min: string | null = null
   for (const key of Object.keys(data.plans)) if (!min || key < min) min = key
-  for (const t of data.txns) {
-    const p = periodOf(t.date, start)
-    if (!min || p < min) min = p
-  }
+  // 桶子的 key 就是所有出現過的期間，不必再把每一筆交易換算一次。
+  for (const p of txnsByPeriod(data).keys()) if (!min || p < min) min = p
   return min
 }
 
