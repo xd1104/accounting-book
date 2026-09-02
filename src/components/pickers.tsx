@@ -12,7 +12,8 @@ export function ColorPicker({
   return (
     <div>
       <div className="text-sm text-muted mb-2">{label}</div>
-      <div className="grid grid-cols-6 gap-2">
+      {/* px-2：選中的色塊有 scale-110 + ring-offset-2，六欄時最右一格會撐出容器 3px */}
+      <div className="grid grid-cols-6 gap-2 px-2">
         {PALETTE.map((c) => (
           <button
             key={c}
