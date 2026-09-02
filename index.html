@@ -19,7 +19,10 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="記帳本" />
-    <meta name="theme-color" content="#0b0b12" />
+    <!-- 分頁列的顏色（--surface）。有 chrome 的瀏覽器會用它替螢幕最底那條上色。
+         帶 media 是為了 JS 啟動前就對；使用者手動選主題後由 store.tsx 蓋掉。 -->
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#16161f" media="(prefers-color-scheme: dark)" />
   </head>
   <body>
     <div id="root"></div>

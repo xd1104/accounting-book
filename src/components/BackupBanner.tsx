@@ -36,7 +36,7 @@ export function BackupBanner() {
       <div className="flex items-start gap-2">
         <span className="text-lg leading-none">⚠️</span>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold text-warn">
+          <div className="text-sm font-semibold text-warn-ink">
             {cloud === 'stuck'
               ? '雲端同步沒在跑'
               : status.never
@@ -54,7 +54,7 @@ export function BackupBanner() {
                 資料只存在這個瀏覽器裡。清除瀏覽器資料、換裝置，或把主畫面的 App
                 刪掉，都會讓記錄一起消失，而且救不回來。
                 <br />
-                <span className="text-warn">開啟雲端同步就不用再手動備份了。</span>
+                <span className="text-warn-ink">開啟雲端同步就不用再手動備份了。</span>
               </>
             )}
           </p>
@@ -63,7 +63,7 @@ export function BackupBanner() {
       <button
         onClick={run}
         disabled={busy}
-        className="h-9 px-4 mt-2.5 ml-7 rounded-full bg-warn text-white text-xs font-semibold active:scale-95 transition disabled:opacity-50"
+        className="h-9 px-4 mt-2.5 ml-7 rounded-full bg-warn text-on-warn text-sm font-semibold active:scale-95 transition disabled:bg-surface2 disabled:text-muted"
       >
         {busy ? '匯出中…' : '立即匯出備份'}
       </button>

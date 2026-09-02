@@ -97,7 +97,7 @@ export function Settings() {
               <button
                 key={t}
                 onClick={() => setTheme(t as Theme)}
-                className={`px-3 h-7 rounded-lg text-xs font-semibold transition ${
+                className={`px-3 h-8 rounded-lg text-[13px] font-semibold transition ${
                   theme === t ? 'bg-surface text-ink shadow-sm' : 'text-muted'
                 }`}
               >
@@ -176,12 +176,12 @@ export function Settings() {
         <div className="px-4 pb-3 text-xs text-muted">
           {cloud === 'ok' ? (
             <>
-              雲端同步開著，每次記帳都會自動上傳，<b className="text-ok">不需要再手動備份</b>。
+              雲端同步開著，每次記帳都會自動上傳，<b className="text-ok-ink">不需要再手動備份</b>。
               下面的匯出是額外的離線副本，想留就留。
             </>
           ) : (
             <>
-              資料和照片都存在這個瀏覽器裡。<b className="text-warn">請定期匯出備份</b> —
+              資料和照片都存在這個瀏覽器裡。<b className="text-warn-ink">請定期匯出備份</b> —
               清除瀏覽器資料、換裝置，或刪掉主畫面的 App，記錄都會一起消失且救不回來。
               <br />
               <span className="text-faint">
@@ -198,7 +198,7 @@ export function Settings() {
           label="上次備份"
           hint={backup.never ? '從來沒有備份過' : undefined}
         >
-          <span className={`text-sm tnum ${backup.due ? 'text-warn font-semibold' : 'text-muted'}`}>
+          <span className={`text-sm tnum ${backup.due ? 'text-warn-ink font-semibold' : 'text-muted'}`}>
             {backup.never ? '無' : backup.days === 0 ? '今天' : `${backup.days} 天前`}
           </span>
         </Row>
@@ -231,20 +231,20 @@ export function Settings() {
           <button
             onClick={doExport}
             disabled={busy}
-            className="h-11 rounded-2xl bg-brand text-white text-sm font-semibold active:scale-[0.98] transition disabled:opacity-50"
+            className="h-11 rounded-2xl bg-brand text-on-brand text-sm font-semibold active:scale-[0.98] transition disabled:bg-surface2 disabled:text-muted disabled:shadow-none"
           >
             {busy ? '處理中…' : '匯出備份'}
           </button>
           <button
             onClick={() => fileRef.current?.click()}
             disabled={busy}
-            className="h-11 rounded-2xl bg-surface2 text-ink text-sm font-semibold active:scale-[0.98] transition disabled:opacity-50"
+            className="h-11 rounded-2xl bg-surface2 text-ink text-sm font-semibold active:scale-[0.98] transition disabled:text-faint"
           >
             匯入備份
           </button>
         </div>
         {msg && (
-          <div className={`px-4 pb-3 text-xs ${msg.bad ? 'text-bad' : 'text-ok'}`}>{msg.text}</div>
+          <div className={`px-4 pb-3 text-xs ${msg.bad ? 'text-bad' : 'text-ok-ink'}`}>{msg.text}</div>
         )}
         <input
           ref={fileRef}
@@ -260,8 +260,9 @@ export function Settings() {
       </Group>
 
       <Group title="版本">
-        <Row label="目前跑的版本" hint="這是這台裝置實際跑的版本，不一定是最新的">
-          <span className="text-sm tnum text-muted">{APP_VERSION}</span>
+        {/* 版本號很長，放右邊會把 hint 擠成兩行。版本號本來就該和標籤同一欄才對得齊。 */}
+        <Row label="目前跑的版本" hint={APP_VERSION}>
+          <span className="text-xs text-muted">這台裝置實際跑的</span>
         </Row>
         <div className="px-3 pb-3">
           {updateReady ? (
@@ -271,7 +272,7 @@ export function Settings() {
               </div>
               <button
                 onClick={applyUpdate}
-                className="w-full h-11 rounded-2xl bg-brand text-white text-sm font-semibold active:scale-[0.98] transition"
+                className="w-full h-11 rounded-2xl bg-brand text-on-brand text-sm font-semibold active:scale-[0.98] transition"
               >
                 立即更新
               </button>
@@ -282,7 +283,7 @@ export function Settings() {
               <button
                 onClick={doCheckUpdate}
                 disabled={checking || !updatesSupported()}
-                className="w-full h-11 rounded-2xl bg-surface2 text-ink text-sm font-semibold active:scale-[0.98] transition disabled:opacity-50"
+                className="w-full h-11 rounded-2xl bg-surface2 text-ink text-sm font-semibold active:scale-[0.98] transition disabled:text-faint"
               >
                 {checking ? '檢查中…' : '檢查有沒有新版本'}
               </button>

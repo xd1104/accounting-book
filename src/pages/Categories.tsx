@@ -133,7 +133,7 @@ function CategoryEditor({
               name.trim() && onSave({ name: name.trim(), emoji, color, type: c?.type ?? type })
             }
             disabled={!name.trim()}
-            className="flex-1 h-12 rounded-2xl bg-brand text-white font-semibold disabled:opacity-40 active:scale-[0.98] transition"
+            className="flex-1 h-12 rounded-2xl bg-brand text-on-brand font-semibold disabled:bg-surface2 disabled:text-muted disabled:shadow-none active:scale-[0.98] transition"
           >
             儲存
           </button>

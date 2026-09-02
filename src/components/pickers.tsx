@@ -12,7 +12,7 @@ export function ColorPicker({
   return (
     <div>
       <div className="text-sm text-muted mb-2">{label}</div>
-      <div className="grid grid-cols-9 gap-1.5">
+      <div className="grid grid-cols-6 gap-2">
         {PALETTE.map((c) => (
           <button
             key={c}

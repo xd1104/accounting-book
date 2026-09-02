@@ -183,7 +183,7 @@ export function Plan() {
       <div className="flex items-center justify-center gap-1 pt-1">
         <button
           onClick={() => setMonth(addMonths(month, -1))}
-          className="w-9 h-9 grid place-items-center rounded-full text-muted active:bg-surface2"
+          className="w-11 h-11 grid place-items-center rounded-full text-muted active:bg-surface2"
           aria-label="上個月"
         >
           <IconChevronL className="w-5 h-5" />
@@ -196,7 +196,7 @@ export function Plan() {
         </div>
         <button
           onClick={() => setMonth(addMonths(month, 1))}
-          className="w-9 h-9 grid place-items-center rounded-full text-muted active:bg-surface2"
+          className="w-11 h-11 grid place-items-center rounded-full text-muted active:bg-surface2"
           aria-label="下個月"
         >
           <IconChevronR className="w-5 h-5" />
@@ -208,12 +208,16 @@ export function Plan() {
         <label className="block text-sm text-muted mb-1">本月收入</label>
         <div className="flex items-baseline gap-1.5">
           <span className="text-2xl text-faint">{sym}</span>
+          {/* type=text 才能顯示千分位（同一張卡下面寫的是「已分配 $35,000」，
+              上面卻顯示 35000，同一個數字兩種寫法）。輸入時把非數字都濾掉。 */}
           <input
-            type="number"
+            type="text"
             inputMode="numeric"
-            value={plan?.income || ''}
+            value={plan?.income ? plan.income.toLocaleString('en-US') : ''}
             placeholder="0"
-            onChange={(e) => write({ income: Number(e.target.value) || 0 })}
+            onChange={(e) => write({ income: Number(e.target.value.replace(/\D/g, '')) || 0 })}
+            /* inline style 才贏得過 index.css 那條無層級的 16px 下限（見該檔註解） */
+            style={{ fontSize: 30 }}
             className="flex-1 bg-transparent text-3xl font-bold tnum outline-none min-w-0 placeholder:text-faint"
           />
         </div>
@@ -232,7 +236,7 @@ export function Plan() {
               <span className="text-muted tnum">已分配 {money(s.allocated, sym)}</span>
               <span
                 className={`tnum font-semibold ${
-                  s.unallocated === 0 ? 'text-ok' : s.unallocated < 0 ? 'text-bad' : 'text-warn'
+                  s.unallocated === 0 ? 'text-ok-ink' : s.unallocated < 0 ? 'text-bad' : 'text-warn-ink'
                 }`}
               >
                 {s.unallocated === 0
@@ -266,7 +270,7 @@ export function Plan() {
             <button
               onClick={() => setEditing((v) => !v)}
               className={`h-8 px-3 rounded-full text-xs font-semibold active:scale-95 transition ${
-                editing ? 'bg-brand text-white' : 'text-brand active:bg-surface2'
+                editing ? 'bg-brand text-on-brand' : 'text-brand active:bg-surface2'
               }`}
             >
               {editing ? '完成' : '編輯'}
@@ -291,21 +295,26 @@ export function Plan() {
                 </div>
                 <div className="divide-y divide-line">
                   {g.rows.map(({ alloc: a, account: acc }) => (
-                    <div key={a.accountId} className="flex items-center gap-2 px-2 py-2">
+                    <div key={a.accountId} className="flex items-center gap-2 px-2 py-1.5">
+                      {/* 一個月要按 12 次，觸控目標放大到 44×44；視覺圓圈維持 24。 */}
                       <button
                         onClick={() => toggleDone(a.accountId)}
                         aria-label={a.done ? '標記為未轉帳' : '標記為已轉帳'}
-                        className={`w-6 h-6 shrink-0 grid place-items-center rounded-full transition active:scale-90 ${
-                          a.done ? 'bg-ok text-white' : 'border-2 border-line text-transparent'
-                        }`}
+                        className="w-11 h-11 -my-1 shrink-0 grid place-items-center rounded-full active:scale-90 transition"
                       >
-                        <IconCheck className="w-3.5 h-3.5" />
+                        <span
+                          className={`w-6 h-6 grid place-items-center rounded-full ${
+                            a.done ? 'bg-ok text-on-ok' : 'border-2 border-line text-transparent'
+                          }`}
+                        >
+                          <IconCheck className="w-3.5 h-3.5" />
+                        </span>
                       </button>
 
                       {/* tapping the name edits the item itself */}
                       <button
                         onClick={() => acc && setEditingAccount(acc)}
-                        className="flex items-center gap-2 flex-1 min-w-0 text-left active:opacity-60"
+                        className="flex items-center gap-2 flex-1 min-w-0 min-h-11 text-left active:opacity-60"
                       >
                         <span
                           className="w-8 h-8 shrink-0 grid place-items-center rounded-xl text-base"
@@ -347,7 +356,7 @@ export function Plan() {
                         readOnly={!!a.splits?.length}
                         title={a.splits?.length ? '由下方「零用錢放在哪」的金額加總' : undefined}
                         onChange={(e) => setAllocation(a.accountId, Number(e.target.value) || 0)}
-                        className={`w-[88px] h-9 px-2 shrink-0 text-right rounded-lg tnum text-sm font-semibold outline-none bg-transparent transition ${
+                        className={`w-[88px] h-10 px-2 shrink-0 text-right rounded-lg tnum text-sm font-semibold outline-none bg-transparent transition ${
                           a.splits?.length ? 'text-muted' : 'focus:bg-surface2'
                         }`}
                       />
@@ -407,7 +416,7 @@ export function Plan() {
                       {left > 0 ? ` · 還要轉 ${money(left, sym)}` : ' · 已轉完'}
                     </span>
                   </span>
-                  <span className={`tnum font-semibold ${left > 0 ? '' : 'text-ok'}`}>
+                  <span className={`tnum font-semibold ${left > 0 ? '' : 'text-ok-ink'}`}>
                     {money(r.total, sym)}
                   </span>
                 </div>
@@ -427,7 +436,7 @@ export function Plan() {
         <div className="font-semibold text-sm">零用錢設定</div>
 
         {allowanceUnfunded && (
-          <div className="rounded-2xl px-3 py-2.5 bg-warn/12 text-warn text-xs">
+          <div className="rounded-2xl px-3 py-2.5 bg-warn/12 text-warn-ink text-xs">
             零用錢來源「{allowanceUnfunded.name}」這個月還沒分配到錢，所以每日額度是 0。
             上面把金額填進去就會自動算出來。
           </div>
@@ -529,11 +538,11 @@ export function Plan() {
                     {row && (row.allocated > 0 || row.income > 0 || row.carriedIn !== 0) ? (
                       <>
                         還剩{' '}
-                        <b className={row.left < 0 ? 'text-bad' : 'text-ok'}>
+                        <b className={row.left < 0 ? 'text-bad' : 'text-ok-ink'}>
                           {money(row.left, sym)}
                         </b>
                         {row.carriedIn !== 0 ? (
-                          <span className={row.carriedIn > 0 ? 'text-ok' : 'text-bad'}>
+                          <span className={row.carriedIn > 0 ? 'text-ok-ink' : 'text-bad'}>
                             {' · 結轉 '}
                             {row.carriedIn > 0 ? '+' : ''}
                             {money(row.carriedIn, sym)}
@@ -553,7 +562,7 @@ export function Plan() {
                   value={amount || ''}
                   placeholder="0"
                   onChange={(e) => setSplit(w.id, Number(e.target.value) || 0)}
-                  className="w-[88px] h-9 px-2 shrink-0 text-right rounded-lg bg-surface2 tnum text-sm font-semibold outline-none"
+                  className="w-[88px] h-10 px-2 shrink-0 text-right rounded-lg bg-surface2 tnum text-sm font-semibold outline-none"
                 />
               </div>
             ))}

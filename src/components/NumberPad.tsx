@@ -101,7 +101,7 @@ export function NumberPad({ value, onChange, onSubmit, submitLabel, submitDisabl
       <button
         onClick={onSubmit}
         disabled={submitDisabled}
-        className="h-14 rounded-2xl bg-brand text-white grid place-items-center font-semibold transition active:scale-95 disabled:opacity-40"
+        className="h-14 rounded-2xl bg-brand text-on-brand grid place-items-center font-semibold transition active:scale-95 disabled:bg-surface2 disabled:text-muted disabled:shadow-none"
       >
         {submitLabel ?? <IconCheck className="w-6 h-6" />}
       </button>

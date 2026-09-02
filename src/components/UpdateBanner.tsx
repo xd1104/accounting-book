@@ -24,7 +24,7 @@ export function UpdateBanner() {
         </div>
         <button
           onClick={applyUpdate}
-          className="shrink-0 h-8 px-3 rounded-full bg-brand text-white text-xs font-semibold active:scale-95 transition"
+          className="shrink-0 h-8 px-3 rounded-full bg-brand text-on-brand text-xs font-semibold active:scale-95 transition"
         >
           立即更新
         </button>

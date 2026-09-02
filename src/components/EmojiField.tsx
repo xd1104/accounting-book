@@ -26,7 +26,7 @@ export function EmojiField({
         aria-label="選擇圖示"
       >
         {value}
-        <span className="absolute -bottom-1 -right-1 w-5 h-5 grid place-items-center rounded-full bg-brand text-white text-[10px] shadow">
+        <span className="absolute -bottom-1 -right-1 w-5 h-5 grid place-items-center rounded-full bg-brand text-on-brand text-[10px] shadow">
           ✎
         </span>
       </button>

@@ -42,7 +42,7 @@ export function Records({ onEditTxn }: { onEditTxn: (id: string) => void }) {
       <div className="flex items-center justify-center gap-1 pt-1">
         <button
           onClick={() => setMonth(addMonths(month, -1))}
-          className="w-9 h-9 grid place-items-center rounded-full text-muted active:bg-surface2"
+          className="w-11 h-11 grid place-items-center rounded-full text-muted active:bg-surface2"
           aria-label="上個月"
         >
           <IconChevronL className="w-5 h-5" />
@@ -50,7 +50,7 @@ export function Records({ onEditTxn }: { onEditTxn: (id: string) => void }) {
         <div className="font-semibold min-w-24 text-center">{formatMonthLabel(month)}</div>
         <button
           onClick={() => setMonth(addMonths(month, 1))}
-          className="w-9 h-9 grid place-items-center rounded-full text-muted active:bg-surface2"
+          className="w-11 h-11 grid place-items-center rounded-full text-muted active:bg-surface2"
           aria-label="下個月"
         >
           <IconChevronR className="w-5 h-5" />
@@ -64,14 +64,14 @@ export function Records({ onEditTxn }: { onEditTxn: (id: string) => void }) {
           <div className="border-r border-line">
             <div className="text-[11px] text-muted mb-1">零用錢結餘</div>
             <div
-              className={`text-xl font-bold tnum ${s.allowanceLeft < 0 ? 'text-bad' : 'text-ok'}`}
+              className={`text-xl font-bold tnum ${s.allowanceLeft < 0 ? 'text-bad' : 'text-ok-ink'}`}
             >
               {money(s.allowanceLeft, sym)}
             </div>
             <div className="text-[10px] text-faint mt-0.5 tnum">
               分配 {money(s.allowanceTotal, sym)}
               {s.incomeAllowance > 0 && (
-                <span className="text-ok"> + 收入 {money(s.incomeAllowance, sym)}</span>
+                <span className="text-ok-ink"> + 收入 {money(s.incomeAllowance, sym)}</span>
               )}
             </div>
           </div>
@@ -101,14 +101,14 @@ export function Records({ onEditTxn }: { onEditTxn: (id: string) => void }) {
                   <>
                     <span className="text-[11px] text-faint tnum">
                       {r.carriedIn !== 0 && (
-                        <span className={r.carriedIn > 0 ? 'text-ok' : 'text-bad'}>
+                        <span className={r.carriedIn > 0 ? 'text-ok-ink' : 'text-bad'}>
                           結轉 {r.carriedIn > 0 ? '+' : ''}
                           {money(r.carriedIn, sym)}{' · '}
                         </span>
                       )}
                       已花 {money(r.spent, sym)}
                       {r.income > 0 && (
-                        <span className="text-ok"> +{money(r.income, sym)}</span>
+                        <span className="text-ok-ink"> +{money(r.income, sym)}</span>
                       )}{' '}
                       /{' '}
                     </span>
@@ -134,7 +134,7 @@ export function Records({ onEditTxn }: { onEditTxn: (id: string) => void }) {
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`h-8 rounded-xl text-xs font-semibold transition ${
+              className={`h-9 rounded-xl text-[13px] font-semibold transition ${
                 filter === f ? 'bg-surface text-ink shadow-sm' : 'text-muted'
               }`}
             >
@@ -146,7 +146,7 @@ export function Records({ onEditTxn }: { onEditTxn: (id: string) => void }) {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="搜尋"
-          className="w-28 h-10 px-3 rounded-2xl bg-surface2 text-sm outline-none placeholder:text-faint"
+          className="w-32 h-10 px-3 rounded-2xl bg-surface2 text-sm outline-none placeholder:text-faint"
         />
       </div>
 
@@ -164,7 +164,7 @@ export function Records({ onEditTxn }: { onEditTxn: (id: string) => void }) {
               <div className="flex items-center justify-between px-3 pt-1.5 pb-1">
                 <span className="text-sm font-semibold">{formatDateLabel(date)}</span>
                 <span className="text-xs text-muted tnum">
-                  {dayIncome > 0 && <span className="text-ok">+{money(dayIncome, sym)} </span>}
+                  {dayIncome > 0 && <span className="text-ok-ink">+{money(dayIncome, sym)} </span>}
                   {dayExpense > 0 && <>−{money(dayExpense, sym)}</>}
                 </span>
               </div>

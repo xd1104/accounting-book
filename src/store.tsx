@@ -109,9 +109,15 @@ export function StoreProvider({
     const apply = () => {
       const dark = theme === 'dark' || (theme === 'system' && mq.matches)
       document.documentElement.classList.toggle('dark', dark)
-      document
-        .querySelector('meta[name="theme-color"]')
-        ?.setAttribute('content', dark ? '#0b0b12' : '#f4f4f7')
+      // theme-color 用 --surface（分頁列的顏色），不是頁面底色。
+      // 在有 chrome 的瀏覽器裡，螢幕最底下那條由瀏覽器上色的區域會跟著這個值；
+      // 設成分頁列的顏色，那條看起來就像分頁列延伸到底，而不是「版面漏了一條」。
+      // index.html 有兩個帶 media 的 meta 負責 JS 啟動前的第一次繪製；
+      // 使用者手動選了主題時要蓋掉它們，所以連 media 一起拔掉。
+      for (const m of document.querySelectorAll('meta[name="theme-color"]')) {
+        m.removeAttribute('media')
+        m.setAttribute('content', dark ? '#16161f' : '#ffffff')
+      }
     }
     apply()
     mq.addEventListener('change', apply)

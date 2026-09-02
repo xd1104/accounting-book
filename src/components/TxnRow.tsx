@@ -57,7 +57,7 @@ export function TxnRow({
         </span>
       </span>
       <span
-        className={`shrink-0 tnum font-semibold ${txn.type === 'income' ? 'text-ok' : 'text-ink'}`}
+        className={`shrink-0 tnum font-semibold ${txn.type === 'income' ? 'text-ok-ink' : 'text-ink'}`}
       >
         {txn.type === 'income' ? '+' : '−'}
         {money(txn.amount, sym).replace('-', '')}

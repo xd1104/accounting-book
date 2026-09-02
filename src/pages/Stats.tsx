@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useStore } from '../store'
 import { categoryTotals, dailyTotals, summarize } from '../lib/budget'
 import { addMonths, currentPeriod, formatMonthLabel, parseISODate } from '../lib/date'
@@ -50,7 +50,7 @@ export function Stats() {
       <div className="flex items-center justify-center gap-1 pt-1">
         <button
           onClick={() => setMonth(addMonths(month, -1))}
-          className="w-9 h-9 grid place-items-center rounded-full text-muted active:bg-surface2"
+          className="w-11 h-11 grid place-items-center rounded-full text-muted active:bg-surface2"
           aria-label="上個月"
         >
           <IconChevronL className="w-5 h-5" />
@@ -58,7 +58,7 @@ export function Stats() {
         <div className="font-semibold min-w-24 text-center">{formatMonthLabel(month)}</div>
         <button
           onClick={() => setMonth(addMonths(month, 1))}
-          className="w-9 h-9 grid place-items-center rounded-full text-muted active:bg-surface2"
+          className="w-11 h-11 grid place-items-center rounded-full text-muted active:bg-surface2"
           aria-label="下個月"
         >
           <IconChevronR className="w-5 h-5" />
@@ -83,7 +83,7 @@ export function Stats() {
               <button
                 key={t}
                 onClick={() => setType(t)}
-                className={`px-3 h-7 rounded-lg text-xs font-semibold transition ${
+                className={`px-3 h-8 rounded-lg text-[13px] font-semibold transition ${
                   type === t ? 'bg-surface text-ink shadow-sm' : 'text-muted'
                 }`}
               >
@@ -145,10 +145,23 @@ function DailyChart({
   expenseTotal: number
 }) {
   const [sel, setSel] = useState<number | null>(null)
+  // 30 天的長條每根只有 8.9px 寬，手指點不準。改成在整張圖上左右滑動選日期：
+  // 落點除以容器寬度換算成索引，個別長條就不需要各自可點了。
+  const chartRef = useRef<HTMLDivElement>(null)
+  const drag = useRef<{ on: boolean; startX: number }>({ on: false, startX: 0 })
   const maxSpend = Math.max(...data.map((d) => d.expense), 0)
   const top = Math.max(maxSpend, allowance) * 1.15 || 1
   const peakIndex = maxSpend > 0 ? data.findIndex((d) => d.expense === maxSpend) : -1
   const active = sel != null ? data[sel] : null
+
+  const indexAt = (clientX: number) => {
+    const el = chartRef.current
+    if (!el || data.length === 0) return null
+    const r = el.getBoundingClientRect()
+    if (r.width === 0) return null
+    const i = Math.floor(((clientX - r.left) / r.width) * data.length)
+    return Math.min(data.length - 1, Math.max(0, i))
+  }
 
   return (
     <div className="bg-surface rounded-3xl p-4">
@@ -167,11 +180,32 @@ function DailyChart({
         ) : allowance > 0 ? (
           <>虛線為每日額度 {money(allowance, symbol)}，超過的日子標紅</>
         ) : (
-          <>點一下柱子看當天金額</>
+          <>左右滑動看每天金額</>
         )}
       </div>
 
-      <div className="relative h-32">
+      <div
+        ref={chartRef}
+        role="img"
+        aria-label={`每日支出長條圖，${data.length} 天，最高 ${money(maxSpend, symbol)}。左右滑動選擇日期。`}
+        style={{ touchAction: 'none' }}
+        onPointerDown={(e) => {
+          const i = indexAt(e.clientX)
+          if (i == null) return
+          e.currentTarget.setPointerCapture(e.pointerId)
+          drag.current = { on: true, startX: e.clientX }
+          setSel(sel === i ? null : i)
+        }}
+        onPointerMove={(e) => {
+          // 位移小於 6px 當成點擊，不要把「再點一次取消」又選回來
+          if (!drag.current.on || Math.abs(e.clientX - drag.current.startX) < 6) return
+          const i = indexAt(e.clientX)
+          if (i != null) setSel(i)
+        }}
+        onPointerUp={() => (drag.current.on = false)}
+        onPointerCancel={() => (drag.current.on = false)}
+        className="relative h-32"
+      >
         {/* threshold — dashed because it is a limit, not a gridline */}
         {allowance > 0 && (
           <div
@@ -187,12 +221,7 @@ function DailyChart({
             const over = allowance > 0 && d.expense > allowance
             const h = (d.expense / top) * 100
             return (
-              <button
-                key={d.date}
-                onClick={() => setSel(sel === i ? null : i)}
-                className="flex-1 h-full flex items-end min-w-0"
-                aria-label={`${d.date} ${money(d.expense, symbol)}`}
-              >
+              <div key={d.date} className="flex-1 h-full flex items-end min-w-0">
                 <span
                   className="block w-full rounded-t transition-all duration-500"
                   style={{
@@ -201,10 +230,17 @@ function DailyChart({
                     opacity: sel == null || sel === i ? 1 : 0.35,
                   }}
                 />
-              </button>
+              </div>
             )
           })}
         </div>
+
+        {sel != null && data.length > 0 && (
+          <div
+            className="absolute bottom-0 h-[3px] rounded-full bg-brand pointer-events-none"
+            style={{ left: `${(sel / data.length) * 100}%`, width: `${100 / data.length}%` }}
+          />
+        )}
 
         {/* label only the peak — never a number on every bar */}
         {peakIndex >= 0 && sel == null && (

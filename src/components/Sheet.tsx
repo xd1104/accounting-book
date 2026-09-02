@@ -36,7 +36,7 @@ export function Sheet({ open, onClose, title, children, full, footer }: Props) {
         }`}
       >
         <div className="flex items-center justify-between px-4 pt-3 pb-2 shrink-0">
-          <div className="w-9" />
+          <div className="w-11" />
           <div className="flex-1 text-center">
             <div className="mx-auto mb-2 h-1 w-9 rounded-full bg-line" />
             {title && <div className="font-semibold">{title}</div>}
@@ -44,7 +44,7 @@ export function Sheet({ open, onClose, title, children, full, footer }: Props) {
           <button
             onClick={onClose}
             aria-label="關閉"
-            className="w-9 h-9 grid place-items-center rounded-full text-muted active:bg-surface2"
+            className="w-11 h-11 grid place-items-center rounded-full text-muted active:bg-surface2"
           >
             <IconX className="w-5 h-5" />
           </button>
@@ -52,8 +52,8 @@ export function Sheet({ open, onClose, title, children, full, footer }: Props) {
 
         <div className="flex-1 overflow-y-auto px-4 pb-2">{children}</div>
 
-        {footer && <div className="shrink-0 px-4 pt-2 pb-4 safe-b border-t border-line">{footer}</div>}
-        {!footer && <div className="safe-b pb-2" />}
+        {footer && <div className="shrink-0 px-4 pt-2 safe-pb-4 border-t border-line">{footer}</div>}
+        {!footer && <div className="safe-pb-2" />}
       </div>
     </div>
   )

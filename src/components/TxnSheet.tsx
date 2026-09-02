@@ -201,7 +201,7 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
           <button
             onClick={submit}
             disabled={!valid}
-            className="w-full h-12 rounded-2xl bg-brand text-white font-semibold disabled:opacity-40 active:scale-[0.98] transition"
+            className="w-full h-12 rounded-2xl bg-brand text-on-brand font-semibold disabled:bg-surface2 disabled:text-muted disabled:shadow-none active:scale-[0.98] transition"
           >
             {amount > 0 ? (editing ? '儲存' : `記一筆 ${money(amount, sym)}`) : '先輸入金額'}
           </button>
@@ -250,8 +250,8 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
             <button
               key={label}
               onClick={() => setDate(d)}
-              className={`px-3 h-10 rounded-xl text-xs font-medium transition ${
-                date === d ? 'bg-brand text-white' : 'bg-surface2 text-muted'
+              className={`px-3 h-10 rounded-xl text-[13px] font-medium transition ${
+                date === d ? 'bg-brand text-on-brand' : 'bg-surface2 text-muted'
               }`}
             >
               {label}
@@ -273,7 +273,7 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
           </span>
           <span
             className={`text-4xl font-semibold tnum leading-none truncate ${
-              type === 'income' ? 'text-ok' : 'text-ink'
+              type === 'income' ? 'text-ok-ink' : 'text-ink'
             }`}
           >
             {amount === 0 && !expr ? <span className="text-faint">{sym}0</span> : money(amount, sym)}
@@ -324,7 +324,7 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
           <button
             onClick={() => fileRef.current?.click()}
             disabled={busy}
-            className="shrink-0 w-[62px] rounded-xl bg-surface2 grid place-items-center text-muted active:scale-95 transition disabled:opacity-50"
+            className="shrink-0 w-[62px] rounded-xl bg-surface2 grid place-items-center text-muted active:scale-95 transition disabled:text-faint"
             aria-label="加照片"
           >
             {busy ? (

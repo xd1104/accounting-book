@@ -64,7 +64,7 @@ export function Sync() {
     return (
       <div className="px-4 pb-6 space-y-4">
         <div className="bg-warn/12 rounded-3xl p-4">
-          <div className="font-semibold text-warn mb-1">兩邊都有新的修改</div>
+          <div className="font-semibold text-warn-ink mb-1">兩邊都有新的修改</div>
           {/* The two sides are not equally recoverable, and saying otherwise is
               exactly the reassurance that would cost someone their unsynced edits. */}
           <p className="text-xs text-muted leading-relaxed">
@@ -74,7 +74,7 @@ export function Sync() {
             每次同步都是一次 commit，翻 GitHub 的歷史紀錄就有。
             <br />
             選<b className="text-ink">「用雲端的版本」</b>則會蓋掉這台還沒上傳的修改，
-            <b className="text-warn">那些沒有備份</b>。不確定的話先去「設定 → 匯出備份」。
+            <b className="text-warn-ink">那些沒有備份</b>。不確定的話先去「設定 → 匯出備份」。
           </p>
           <div className="mt-2 text-[11px] text-muted">
             衝突的檔案：
@@ -95,7 +95,7 @@ export function Sync() {
           <button
             onClick={() => resolveSync('local')}
             disabled={sync.status === 'syncing'}
-            className="bg-surface rounded-3xl p-4 text-left active:scale-[0.99] transition disabled:opacity-50"
+            className="bg-surface rounded-3xl p-4 text-left active:scale-[0.99] transition disabled:bg-surface2 disabled:text-muted"
           >
             <div className="font-semibold text-sm">用這台裝置的版本</div>
             <div className="text-xs text-muted mt-0.5 tnum">
@@ -105,7 +105,7 @@ export function Sync() {
           <button
             onClick={() => resolveSync('remote')}
             disabled={sync.status === 'syncing'}
-            className="bg-surface rounded-3xl p-4 text-left active:scale-[0.99] transition disabled:opacity-50"
+            className="bg-surface rounded-3xl p-4 text-left active:scale-[0.99] transition disabled:bg-surface2 disabled:text-muted"
           >
             <div className="font-semibold text-sm">用雲端的版本</div>
             <div className="text-xs text-muted mt-0.5 tnum">
@@ -124,7 +124,7 @@ export function Sync() {
           <div className="flex items-center gap-2 mb-3">
             <span
               className={`w-8 h-8 grid place-items-center rounded-full ${
-                sync.status === 'error' ? 'bg-bad/15 text-bad' : 'bg-ok/15 text-ok'
+                sync.status === 'error' ? 'bg-bad/15 text-bad' : 'bg-ok/15 text-ok-ink'
               }`}
             >
               {sync.status === 'error' ? '!' : <IconCheck className="w-4 h-4" />}
@@ -161,7 +161,7 @@ export function Sync() {
           <button
             onClick={syncNow}
             disabled={sync.status === 'syncing'}
-            className="w-full h-11 rounded-2xl bg-brand text-white text-sm font-semibold active:scale-[0.98] transition disabled:opacity-50"
+            className="w-full h-11 rounded-2xl bg-brand text-on-brand text-sm font-semibold active:scale-[0.98] transition disabled:bg-surface2 disabled:text-muted disabled:shadow-none"
           >
             {sync.status === 'syncing' ? '同步中…' : '立即同步'}
           </button>
@@ -216,7 +216,7 @@ export function Sync() {
             <code className="text-ink">data/</code> 資料夾。
           </p>
           <p className="mt-1">
-            <b className="text-warn">如果它是 Public，你的帳目就是所有人都看得到。</b>
+            <b className="text-warn-ink">如果它是 Public，你的帳目就是所有人都看得到。</b>
             介意的話有兩個做法：把這個 repo 改成 Private（不過免費帳號的 GitHub Pages
             就不能用了，網頁會關掉），或改選「另開一個 repo」把資料分開放。
           </p>
@@ -232,7 +232,7 @@ export function Sync() {
               github.com/new
             </a>{' '}
             建立，名稱建議 <code className="text-ink">accounting-data</code>，
-            <b className="text-warn">務必選 Private</b>，並勾選 Add a README（不能是空 repo）。
+            <b className="text-warn-ink">務必選 Private</b>，並勾選 Add a README（不能是空 repo）。
           </p>
         </Step>
       )}
@@ -256,44 +256,60 @@ export function Sync() {
       </Step>
 
       <Step n={3} title="填進來">
-        <div className="space-y-2 mt-2">
-          <input
-            value={owner}
-            onChange={(e) => setOwner(e.target.value)}
-            placeholder="GitHub 帳號，例如 xd1104"
-            autoCapitalize="none"
-            autoCorrect="off"
-            className="w-full h-11 px-3 rounded-xl bg-surface2 text-sm outline-none placeholder:text-faint"
-          />
-          <input
-            value={repo}
-            onChange={(e) => setRepo(e.target.value)}
-            placeholder="repo 名稱"
-            autoCapitalize="none"
-            autoCorrect="off"
-            className="w-full h-11 px-3 rounded-xl bg-surface2 text-sm outline-none placeholder:text-faint"
-          />
-          <input
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            placeholder="貼上 token（github_pat_…）"
-            type="password"
-            autoCapitalize="none"
-            autoCorrect="off"
-            className="w-full h-11 px-3 rounded-xl bg-surface2 text-sm outline-none placeholder:text-faint"
-          />
+        <div className="space-y-3 mt-2">
+          {/* 只有 placeholder 的話，一打字標籤就消失；而中間那格預填的是真的值不是提示。 */}
+          <label className="block">
+            <span className="block text-xs text-muted mb-1">GitHub 帳號</span>
+            <input
+              value={owner}
+              onChange={(e) => setOwner(e.target.value)}
+              placeholder="例如 xd1104"
+              autoCapitalize="none"
+              autoCorrect="off"
+              className="w-full h-11 px-3 rounded-xl bg-surface2 text-sm outline-none placeholder:text-faint"
+            />
+          </label>
+          <label className="block">
+            <span className="block text-xs text-muted mb-1">Repo 名稱</span>
+            <input
+              value={repo}
+              onChange={(e) => setRepo(e.target.value)}
+              placeholder="repo 名稱"
+              autoCapitalize="none"
+              autoCorrect="off"
+              className="w-full h-11 px-3 rounded-xl bg-surface2 text-sm outline-none placeholder:text-faint"
+            />
+          </label>
+          <label className="block">
+            <span className="block text-xs text-muted mb-1">存取 token</span>
+            <input
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder="貼上 token（github_pat_…）"
+              type="password"
+              autoCapitalize="none"
+              autoCorrect="off"
+              className="w-full h-11 px-3 rounded-xl bg-surface2 text-sm outline-none placeholder:text-faint"
+            />
+          </label>
         </div>
 
         {err && <div className="text-xs text-bad mt-2">{err}</div>}
-        {warn && <div className="text-xs text-warn mt-2">{warn}</div>}
+        {warn && <div className="text-xs text-warn-ink mt-2">{warn}</div>}
 
         <button
           onClick={connect}
           disabled={busy || !owner.trim() || !repo.trim() || !token.trim()}
-          className="w-full h-12 mt-3 rounded-2xl bg-brand text-white font-semibold disabled:opacity-40 active:scale-[0.98] transition"
+          className="w-full h-12 mt-3 rounded-2xl bg-brand text-on-brand font-semibold disabled:bg-surface2 disabled:text-muted disabled:shadow-none active:scale-[0.98] transition"
         >
           {busy ? '檢查中…' : '連線'}
         </button>
+        {/* 停用的按鈕自己說還缺什麼，不要讓人猜 */}
+        {!busy && (!owner.trim() || !repo.trim() || !token.trim()) && (
+          <div className="text-xs text-muted mt-2 text-center">
+            {!owner.trim() ? '請填 GitHub 帳號' : !repo.trim() ? '請填 repo 名稱' : '請貼上 token'}
+          </div>
+        )}
       </Step>
 
       <p className="text-[11px] text-faint px-1 leading-relaxed">
@@ -335,7 +351,7 @@ function Step({ n, title, children }: { n: number; title: string; children: Reac
   return (
     <div className="bg-surface rounded-3xl p-4">
       <div className="flex items-center gap-2 mb-2">
-        <span className="w-6 h-6 shrink-0 grid place-items-center rounded-full bg-brand text-white text-xs font-bold">
+        <span className="w-6 h-6 shrink-0 grid place-items-center rounded-full bg-brand text-on-brand text-xs font-bold">
           {n}
         </span>
         <span className="font-semibold text-sm">{title}</span>

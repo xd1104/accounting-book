@@ -83,10 +83,10 @@ export function Home({ onEditTxn }: { onEditTxn: (id: string) => void }) {
           <div className="mt-3 text-xs text-muted tnum">
             今天已花 {money(s.spentToday, sym)}
             {s.incomeToday > 0 && (
-              <span className="text-ok"> · 收入 +{money(s.incomeToday, sym)}</span>
+              <span className="text-ok-ink"> · 收入 +{money(s.incomeToday, sym)}</span>
             )}
             {s.plan?.rollover && s.todayBudget > s.dailyAllowance && (
-              <span className="text-ok">
+              <span className="text-ok-ink">
                 {' '}
                 · 含結餘 +{money(s.todayBudget - s.dailyAllowance, sym)}
               </span>
@@ -121,7 +121,7 @@ export function Home({ onEditTxn }: { onEditTxn: (id: string) => void }) {
           {totalCount > 0 && (
             <span
               className={`text-xs px-2 py-1 rounded-full tnum ${
-                s.allocationComplete ? 'bg-ok/15 text-ok' : 'bg-surface2 text-muted'
+                s.allocationComplete ? 'bg-ok/15 text-ok-ink' : 'bg-surface2 text-muted'
               }`}
             >
               {s.allocationComplete ? '已完成' : `${doneCount}/${totalCount} 已轉`}
@@ -141,7 +141,7 @@ export function Home({ onEditTxn }: { onEditTxn: (id: string) => void }) {
               <span className="text-xs text-muted">
                 已分配 {money(s.allocated, sym)}
                 {s.unallocated !== 0 && (
-                  <span className={s.unallocated < 0 ? 'text-bad' : 'text-warn'}>
+                  <span className={s.unallocated < 0 ? 'text-bad' : 'text-warn-ink'}>
                     {' '}
                     · {s.unallocated > 0 ? '未分配' : '超出'} {money(Math.abs(s.unallocated), sym)}
                   </span>
@@ -155,7 +155,7 @@ export function Home({ onEditTxn }: { onEditTxn: (id: string) => void }) {
                   <div key={a.accountId} className="flex items-center gap-2 text-sm">
                     <span
                       className={`w-4 h-4 shrink-0 grid place-items-center rounded-full ${
-                        a.done ? 'bg-ok text-white' : 'border-2 border-line'
+                        a.done ? 'bg-ok text-on-ok' : 'border-2 border-line'
                       }`}
                     >
                       {a.done && <IconCheck className="w-2.5 h-2.5" />}

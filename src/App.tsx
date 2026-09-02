@@ -52,7 +52,7 @@ export function App() {
               <button
                 onClick={back}
                 aria-label="返回"
-                className="w-10 h-10 grid place-items-center rounded-full text-ink active:bg-surface2"
+                className="w-11 h-11 grid place-items-center rounded-full text-ink active:bg-surface2"
               >
                 <IconBack className="w-5 h-5" />
               </button>
@@ -82,14 +82,6 @@ export function App() {
 
       {isTab && (
         <nav className="fixed bottom-0 inset-x-0 z-30 safe-b bg-surface/92 backdrop-blur-xl border-t border-line">
-          {/* Paints well past the bar's own bottom edge. On iOS a strip of page
-              background can show up underneath a bottom-fixed bar (the
-              home-indicator area); this makes whatever shows there the bar's
-              colour rather than the page's. Invisible when there is no strip. */}
-          <div
-            aria-hidden
-            className="absolute inset-x-0 top-0 -bottom-32 -z-10 bg-surface/92 pointer-events-none"
-          />
           <div className="h-16 grid grid-cols-5 items-center max-w-lg mx-auto">
             {TABS.slice(0, 2).map((t) => (
               <TabButton key={t.path} {...t} active={base === t.path} />
@@ -99,7 +91,7 @@ export function App() {
               <button
                 onClick={() => push('/add')}
                 aria-label="記一筆"
-                className="w-14 h-14 -mt-6 rounded-full bg-brand text-white grid place-items-center shadow-lg shadow-brand/35 active:scale-95 transition"
+                className="w-14 h-14 -mt-6 rounded-full bg-brand text-on-brand grid place-items-center shadow-lg shadow-brand/35 active:scale-95 transition"
               >
                 <IconPlus className="w-7 h-7" />
               </button>
@@ -132,7 +124,7 @@ function TabButton({
     <button
       onClick={() => push(path)}
       className={`h-full flex flex-col items-center justify-center gap-0.5 transition ${
-        active ? 'text-brand' : 'text-faint'
+        active ? 'text-brand' : 'text-muted'
       }`}
     >
       <Icon className="w-6 h-6" />
