@@ -82,6 +82,14 @@ export function App() {
 
       {isTab && (
         <nav className="fixed bottom-0 inset-x-0 z-30 safe-b bg-surface/92 backdrop-blur-xl border-t border-line">
+          {/* Paints well past the bar's own bottom edge. On iOS a strip of page
+              background can show up underneath a bottom-fixed bar (the
+              home-indicator area); this makes whatever shows there the bar's
+              colour rather than the page's. Invisible when there is no strip. */}
+          <div
+            aria-hidden
+            className="absolute inset-x-0 top-0 -bottom-32 -z-10 bg-surface/92 pointer-events-none"
+          />
           <div className="h-16 grid grid-cols-5 items-center max-w-lg mx-auto">
             {TABS.slice(0, 2).map((t) => (
               <TabButton key={t.path} {...t} active={base === t.path} />
