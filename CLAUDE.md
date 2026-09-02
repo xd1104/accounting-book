@@ -70,6 +70,44 @@ npm run typecheck  # 型別檢查，改完該跑
 - **首頁的環用 `progress` 判色，不能只用 `spentToday / todayBudget`**。
   額度已經是負的時候今天花 0 會算出 0%，就會出現「綠色的超支」。
 
+### 樣式（2026-09-02 UX 稽核，每一條都有人踩過）
+- ⭐ **`src/index.css` 的 `input, select, textarea { font-size: 16px }` 刻意寫在
+  所有 `@layer` 之外。** 無層級宣告贏過所有 Tailwind utility，這正是要的效果：
+  **iOS Safari 對 font-size < 16px 的欄位會自動放大**，放大後點不到底部按鈕。
+  **不准「順手整理」把它搬進 `@layer base`** —— 那會讓 `text-sm` 贏回來、bug 全部復活。
+  原本這條也含 `button`，導致 27 顆按鈕的 `text-*` 全部失效（「本月收入」宣告 30px
+  實際渲染 16px、比旁邊的 `$` 還小）—— `button` 已移除，**不准加回來**。
+  代價：28 個 input/select/textarea 上的 `text-sm`/`text-xs` 是死碼，改不動也別當真。
+- **同一個元素不准同時寫 `pb-*` 和 `safe-b`。** Tailwind 4 把 `.safe-b` 排在 `.pb-4`
+  之後，`padding-bottom` 會**靜默變成 0**（sheet footer 就這樣掉了 16px 內距）。
+  要兩者兼具就用會相加的寫法，改完**實測 computed 值**確認。
+- ⭐ **`--ok-ink` / `--warn-ink` 是文字專用，`--ok` / `--warn` 是填色專用。**
+  同一個綠當文字畫在中性底上只有 3.3:1，但它同時是**首頁那個環**與超支警示的填色
+  —— 改填色會動到環。所以文字另開一組，**不准合併回去**。
+- **theme-color 統一 = `--surface`**（不是頁面底色）。三處要一致：`index.html` 兩個
+  帶 `media` 的 meta（負責 JS 啟動前）、`manifest.webmanifest`、`store.tsx` 切主題時覆蓋。
+  理由見上面那條 iPhone 底部縫隙。
+- **淺色模式的 ink/muted/faint 三階灰實際上只剩兩階**，是刻意的取捨不是沒調好：
+  在頁面底色 `#f4f4f7` 上要維持 4.5:1，灰階亮度上限就到那裡，faint 實測 4.51 已經
+  貼著門檻。「零對比失敗」與「三階灰」在淺色模式下不能兼得。層次改靠字級與粗細。
+- **統計頁長條圖是 `touch-action: pan-y`，不是 `none`。** 用 `none` 會讓手指落在圖表上
+  時**整頁不能垂直捲動**（實測 scrollTop 0→0），而且沒有任何錯誤、測試照樣全綠。
+  水平拖曳靠 pointer 事件 + 方向判定（位移 >6px 且 |dy|>|dx| 就還原選取、交給瀏覽器捲）。
+
+### 效能（2026-09-02 效能稽核，都有實測數字）
+- **同步只抓 sha 有變的月份**（`sync.ts` 的 `readRemote(cfg, lazy)`）。目錄列表本來就
+  給了每個檔的 sha，而 GitHub 的 blob sha 是內容定址的 —— sha 一樣就是內容一樣。
+  三年份帳本一次穩態同步 39 個請求 → 3 個。
+  ⚠️ **衝突分支一定要 `fillSkipped()` 補抓**：衝突畫面顯示「雲端 N 筆記錄 · 覆蓋這台裝置」，
+  按下去會蓋掉本機還沒上傳的修改，**少報一筆都不行**。
+- **`budget.ts` 的交易分桶快取依賴「store 每次 mutate 都產生新的 data 物件」。**
+  哪天有人把 store 改成原地修改陣列，這裡會**安靜地**回答上一版的數字。
+- **service worker 的 navigate 是 network-first + 2 秒逾時**。純 network-first 的問題不是
+  離線（離線 fetch 立刻失敗、267ms 就開起來），是**半死不活的訊號**：實測伺服器延遲 8 秒時
+  空白等 8.1 秒。逾時後仍會把網路那份寫回快取 —— **不准拿掉這個寫回**，不然殼永遠不更新。
+- **route-level code splitting 量過了，是負面的，不要再提。** 原型實測：gzip 101→80KB、
+  **首屏沒變快**、第一次點統計分頁反而 307→428ms。這個 App 的 bundle 57% 是 react-dom。
+
 ### 版面
 - **版本號由 build 時的 commit 產生**，同時寫進 JS 與 `sw.js` 的 cache 名稱。
   手動維護版本號忘了改 → 瀏覽器看不出 service worker 有變 → 手機永遠停在舊版，無症狀。
@@ -89,16 +127,40 @@ npm run typecheck  # 型別檢查，改完該跑
   跨午夜時兩台會對不同的日期記帳，看起來像同步壞掉。
 - **不要用 `input[type=number]` 的全域索引定位**。版面一改就錯位，而且會安靜地
   填到別的欄位、測試照樣「通過」到很後面才炸。用卡片範圍 + 名稱定位。
+- **量這個 PWA 一定要開 `serviceWorkers: 'block'`**，否則 reload 會隨機噴
+  `ERR_HTTP_RESPONSE_CODE_FAILURE`，而且量到的是快取不是 App。
+- **測 `touch-action` 相關的行為必須用 CDP 派真觸控事件。** Playwright 的 `mouse` API
+  不受 `touch-action` 影響 —— 統計頁那個「整頁不能捲」的 bug 用 mouse 測是**全綠的**。
+- **CDP 的 `Network.emulateNetworkConditions` 節流不到 service worker 發出的請求。**
+  第一次量到「延遲 10 秒也 161ms 開起來」差點把問題判成不存在；要在伺服器端真的加延遲。
+- **不准寫 `ok(true, '...')` 這種恆真斷言。** 曾經有一條躲在改動最大的區塊裡，
+  等於在那裡開了一個覆蓋率天窗 —— 統計頁滑不動的 bug 就是從那個洞溜上線的。
+- 測試腳本在 session 的 scratchpad、**沒有版控**，被覆寫就救不回來，也做不出 diff。
+  改測試前先留一份 `__tmp__` 備份。
 
 ## 待辦 / 已知粗糙處
 
 - 雲端同步只對假的 GitHub API 驗過；真實 API 只有 Benson 手動試過。
 - 電腦端曾出現「連線成功但同步 Failed to fetch」，原因未確認（見上面 `Cache-Control` 那條）。
 - `data/months/` 有幾個 `2026-09（0 筆）` 的空檔案，來源是切到未來月份時寫出空檔，未清。
-- **iPhone 上底部分頁列下方會露出一條頁面底色**（明細／統計特別明顯）。在一般瀏覽器
-  量過 `gapUnderNav: 0`，我們的版面是對的，**原因未確認**、也無法在這裡重現。
-  已在 nav 內加一層畫到自身下緣之外的底色當作保險（`-bottom-32`），但**沒驗證過有沒有效**。
-  下次有人碰：先問 Benson 是「主畫面 App」還是 Safari 分頁，兩者的底部行為不一樣。
+- **效能那批（`sync.ts` 懶讀、`budget.ts` 分桶、`sw.js` 逾時）尚未經 lab-qa 獨立驗收**，
+  只有 15 組回歸測試全綠。QA 明確要求跟 UX 那輪分開判定。
+- **視覺設計還沒做。** 2026-09-02 這輪是「稽核」——修的是量得出來的缺陷（對比、字級、
+  觸控目標），Benson 的反應是「我看根本沒變」，**他是對的**。他嫌醜的東西還在：
+  首頁超支時那個又粗又紅的環、備份提醒佔掉第一屏 1/4、三個數字卡沒有主次、
+  記錄列太高、頂部「首頁」+ 日期兩行佔空間。**下一輪要走 lab-ux 出 demo → 他試玩
+  確認方向 → dev 實作**，不要再從稽核直接跳到實作。
+- 分配列的金額欄沒有千分位（群組小計寫 `$38,000`、緊鄰的輸入欄寫 `38000`），
+  收入欄已經改了、分配列還沒，同一套邏輯應該一致套用。
+- **iPhone 上底部分頁列下方那條頁面底色 — 已診斷，不是我們的 bug。**
+  從 Benson 的截圖逐像素反推：**版面視口 810 CSS px、螢幕 874**，底下那 64px
+  不在網頁的繪圖範圍內。標題「明細」落在 device y 222–273（不是 30–81）→ 排除
+  「整頁橡皮筋回彈」；分頁列頂邊在 CSS 714 → padding-bottom ≈ 34 →
+  **`env(safe-area-inset-bottom)` 有生效、`viewport-fit=cover` 正常**。
+  standalone 幾何上不可能長這樣 → 那 64px 是**瀏覽器 chrome**（Safari 收合的網址列，
+  或 App 內建瀏覽器）。曾經加的 `-bottom-32` 保險層畫在視口外、永遠不會被合成，
+  **已移除**；現在改用 theme-color = `--surface` 讓瀏覽器替那條上色時用分頁列的顏色。
+  ⚠️ 真機沒驗過（這裡沒有 WebKit）。還在的話先確認他是用主畫面 App 還是 Safari。
 
 ---
 
