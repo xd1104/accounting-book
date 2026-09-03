@@ -1,13 +1,13 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useStore } from '../store'
 import { summarize, txnsInPeriod } from '../lib/budget'
-import { currentPeriod, formatFullDate, today } from '../lib/date'
+import { currentPeriod, formatHomeDate, today } from '../lib/date'
 import { money } from '../lib/format'
 import { Ring, budgetColor } from '../components/Ring'
 import { TxnRow } from '../components/TxnRow'
-import { IconChevronR, IconCheck, IconWallet } from '../components/icons'
+import { IconChevronR, IconWallet } from '../components/icons'
 import { push } from '../router'
-import { BackupBanner } from '../components/BackupBanner'
+import { BackupChip, BackupPanel } from '../components/BackupBanner'
 
 export function Home({ onEditTxn }: { onEditTxn: (id: string) => void }) {
   const { data } = useStore()
@@ -15,6 +15,8 @@ export function Home({ onEditTxn }: { onEditTxn: (id: string) => void }) {
   const month = currentPeriod(data.settings.monthStartDay)
   const s = useMemo(() => summarize(data, month), [data, month])
   const t = today()
+  const { md, weekday } = formatHomeDate(t)
+  const [backupOpen, setBackupOpen] = useState(false)
 
   const todayTxns = useMemo(
     () => txnsInPeriod(data, month).filter((x) => x.date === t),
@@ -44,73 +46,98 @@ export function Home({ onEditTxn }: { onEditTxn: (id: string) => void }) {
 
   const doneCount = s.plan?.allocations.filter((a) => a.done).length ?? 0
   const totalCount = s.plan?.allocations.length ?? 0
+  const pending = s.plan?.allocations.filter((a) => !a.done) ?? []
+  const movedAmount = s.allocatedDone
+  const stillToMove = s.income - s.allocatedDone
 
   return (
     <div className="px-4 pb-6 space-y-4">
-      <div className="pt-1 text-center text-sm text-muted">{formatFullDate(t)}</div>
+      {/* 頂列：日期＋備份 chip 合成一行，取代原本「首頁」＋日期兩行。 */}
+      <div className="flex items-center gap-2 pt-3 pb-1 min-h-11">
+        <div className="flex-1 text-[17px] font-bold">
+          {md} <span className="text-muted font-semibold">{weekday}</span>
+        </div>
+        <BackupChip onOpen={() => setBackupOpen(true)} />
+      </div>
+      <BackupPanel open={backupOpen} onClose={() => setBackupOpen(false)} />
 
-      <BackupBanner />
-
-      {/* hero ring */}
-      <div className="flex flex-col items-center pt-1">
-        <Ring progress={hasBudget ? progress : 0} color={color}>
-          {hasBudget ? (
-            <>
-              {/* Nothing spent today means the shortfall was carried in from
-                  earlier days — "今天超支" would blame the wrong day. */}
-              <div className="text-xs text-muted mb-1">
-                {over ? (s.spentToday > 0 ? '今天超支' : '累積超支') : '今天還能花'}
-              </div>
-              <div className="text-[40px] font-bold leading-none" style={{ color }}>
-                {money(Math.abs(s.todayRemaining), sym)}
-              </div>
-              <div className="text-xs text-muted mt-2 tnum">
-                額度 {money(s.todayBudget, sym)}
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="text-xs text-muted mb-1">今天已花</div>
-              <div className="text-[40px] font-bold leading-none">
-                {money(s.spentToday, sym)}
-              </div>
-              <div className="text-xs text-faint mt-2">尚未設定額度</div>
-            </>
-          )}
-        </Ring>
-
-        {hasBudget && (
-          <div className="mt-3 text-xs text-muted tnum">
-            今天已花 {money(s.spentToday, sym)}
-            {s.incomeToday > 0 && (
-              <span className="text-ok-ink"> · 收入 +{money(s.incomeToday, sym)}</span>
-            )}
-            {s.plan?.rollover && s.todayBudget > s.dailyAllowance && (
-              <span className="text-ok-ink">
-                {' '}
-                · 含結餘 +{money(s.todayBudget - s.dailyAllowance, sym)}
-              </span>
+      {/* 今日卡：環 + 今天可花 + 剩餘可用 / 本月零用錢，取代原本「環 + 環下那行 + 三個 tile」四塊 */}
+      <div className={`rounded-[22px] transition-colors ${over ? 'bg-tint-bad' : 'bg-surface'}`}>
+        <div className="flex items-center gap-3 px-4 pt-4 pb-3.5">
+          <div className="flex-1 min-w-0">
+            {hasBudget ? (
+              <>
+                <div className="text-[13px] text-muted font-semibold">
+                  {over ? (s.spentToday > 0 ? '今天超支' : '累積超支') : '今天還能花'}
+                </div>
+                <div
+                  className="text-[44px] font-extrabold leading-none tnum mt-0.5"
+                  style={{ color }}
+                >
+                  {money(Math.abs(s.todayRemaining), sym)}
+                </div>
+                <div className="text-xs text-muted mt-2 tnum">
+                  額度 {money(s.todayBudget, sym)} · 已花 {money(s.spentToday, sym)}
+                  {s.incomeToday > 0 && (
+                    <span className="text-ok-ink"> · 收入 +{money(s.incomeToday, sym)}</span>
+                  )}
+                  {s.plan?.rollover && s.todayBudget > s.dailyAllowance && (
+                    <span className="text-ok-ink">
+                      {' '}
+                      · 含結餘 +{money(s.todayBudget - s.dailyAllowance, sym)}
+                    </span>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-[13px] text-muted font-semibold">今天已花</div>
+                <div className="text-[44px] font-extrabold leading-none tnum mt-0.5">
+                  {money(s.spentToday, sym)}
+                </div>
+                <div className="text-xs text-faint mt-2">尚未設定額度</div>
+              </>
             )}
           </div>
-        )}
+          <Ring progress={hasBudget ? progress : 0} color={color} size={62} stroke={6}>
+            <span className="text-[15px]">{hasBudget ? (over ? '⚠️' : '🙂') : '💳'}</span>
+          </Ring>
+        </div>
+
+        <div className="h-px bg-line mx-4" />
+
+        <div className="flex items-end gap-3 px-4 pt-3 pb-3.5 tnum">
+          <div className="flex-1 min-w-0">
+            <div className="text-[11.5px] text-muted">剩餘可用</div>
+            <div
+              className={`text-[21px] font-extrabold leading-tight mt-0.5 ${
+                s.allowanceLeft < 0 ? 'text-bad' : ''
+              }`}
+            >
+              {money(s.allowanceLeft, sym)}
+            </div>
+          </div>
+          <div className="shrink-0 text-right text-xs text-muted leading-[1.7]">
+            <div>
+              本月零用錢 <b className="text-ink font-bold">{money(s.allowanceTotal, sym)}</b>
+            </div>
+            <div>
+              {s.daysLeft > 0 ? (
+                <>
+                  剩 {s.daysLeft} 天 · 每天{' '}
+                  <b className="text-ink font-bold">{money(s.suggestedDaily, sym)}</b>
+                </>
+              ) : (
+                <>
+                  本期結束 <b className="text-ink font-bold">{money(s.spentAllowance, sym)}</b>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* stat tiles */}
-      <div className="grid grid-cols-3 gap-2">
-        <Tile label="本月零用錢" value={money(s.allowanceTotal, sym)} />
-        <Tile
-          label="剩餘可用"
-          value={money(s.allowanceLeft, sym)}
-          tone={s.allowanceLeft < 0 ? 'bad' : undefined}
-        />
-        <Tile
-          label={s.daysLeft > 0 ? `剩 ${s.daysLeft} 天 · 每天` : '本期結束'}
-          value={s.daysLeft > 0 ? money(s.suggestedDaily, sym) : money(s.spentAllowance, sym)}
-          tone={s.suggestedDaily < 0 ? 'bad' : undefined}
-        />
-      </div>
-
-      {/* salary allocation */}
+      {/* salary allocation — 列「還沒轉的」，前 4 筆通常已轉、資訊量接近 0 */}
       <button
         onClick={() => push('/plan')}
         className="w-full text-left bg-surface rounded-3xl p-4 active:scale-[0.99] transition"
@@ -136,43 +163,47 @@ export function Home({ onEditTxn }: { onEditTxn: (id: string) => void }) {
           </div>
         ) : (
           <>
-            <div className="flex items-baseline gap-2 mb-2 tnum">
-              <span className="text-2xl font-bold">{money(s.income, sym)}</span>
-              <span className="text-xs text-muted">
-                已分配 {money(s.allocated, sym)}
-                {s.unallocated !== 0 && (
-                  <span className={s.unallocated < 0 ? 'text-bad' : 'text-warn-ink'}>
-                    {' '}
-                    · {s.unallocated > 0 ? '未分配' : '超出'} {money(Math.abs(s.unallocated), sym)}
-                  </span>
-                )}
-              </span>
+            <div className="h-1.5 rounded-full bg-surface2 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-brand transition-[width] duration-500"
+                style={{ width: `${s.income > 0 ? Math.min(100, (movedAmount / s.income) * 100) : 0}%` }}
+              />
             </div>
-            <div className="space-y-1.5">
-              {s.plan!.allocations.slice(0, 4).map((a) => {
-                const acc = data.accounts.find((x) => x.id === a.accountId)
-                return (
-                  <div key={a.accountId} className="flex items-center gap-2 text-sm">
-                    <span
-                      className={`w-4 h-4 shrink-0 grid place-items-center rounded-full ${
-                        a.done ? 'bg-ok text-on-ok' : 'border-2 border-line'
-                      }`}
-                    >
-                      {a.done && <IconCheck className="w-2.5 h-2.5" />}
+
+            {s.allocationComplete ? (
+              <div className="text-sm text-muted mt-2">這個月都轉完了 🎉</div>
+            ) : (
+              <>
+                <div className="text-[12.5px] text-muted mt-2 tnum">
+                  已轉 <b className="font-bold text-ink">{money(movedAmount, sym)}</b> /{' '}
+                  {money(s.income, sym)} · 還沒轉{' '}
+                  <b className="font-bold text-ink">{money(stillToMove, sym)}</b>
+                  {s.unallocated !== 0 && (
+                    <span className={s.unallocated < 0 ? 'text-bad' : 'text-warn-ink'}>
+                      {' '}
+                      · {s.unallocated > 0 ? '未分配' : '超出'} {money(Math.abs(s.unallocated), sym)}
                     </span>
-                    <span className={`flex-1 truncate ${a.done ? 'text-muted line-through' : ''}`}>
-                      {acc?.emoji} {acc?.name ?? '（已刪除）'}
-                    </span>
-                    <span className="tnum text-muted">{money(a.amount, sym)}</span>
-                  </div>
-                )
-              })}
-              {s.plan!.allocations.length > 4 && (
-                <div className="text-xs text-faint pl-6">
-                  還有 {s.plan!.allocations.length - 4} 筆…
+                  )}
                 </div>
-              )}
-            </div>
+                <div className="space-y-1 mt-1.5">
+                  {pending.slice(0, 2).map((a) => {
+                    const acc = data.accounts.find((x) => x.id === a.accountId)
+                    return (
+                      <div key={a.accountId} className="flex items-center gap-2 text-[13px]">
+                        <span className="w-4 h-4 shrink-0 grid place-items-center rounded-full border-2 border-line" />
+                        <span className="flex-1 truncate">
+                          {acc?.emoji} {acc?.name ?? '（已刪除）'}
+                        </span>
+                        <span className="tnum text-muted">{money(a.amount, sym)}</span>
+                      </div>
+                    )
+                  })}
+                  {pending.length > 2 && (
+                    <div className="text-xs text-faint pl-6">還有 {pending.length - 2} 筆沒轉…</div>
+                  )}
+                </div>
+              </>
+            )}
           </>
         )}
       </button>
@@ -199,15 +230,6 @@ export function Home({ onEditTxn }: { onEditTxn: (id: string) => void }) {
           </div>
         )}
       </div>
-    </div>
-  )
-}
-
-function Tile({ label, value, tone }: { label: string; value: string; tone?: 'bad' }) {
-  return (
-    <div className="bg-surface rounded-2xl p-3 text-center">
-      <div className="text-[11px] text-muted mb-1 truncate">{label}</div>
-      <div className={`text-base font-bold tnum ${tone === 'bad' ? 'text-bad' : ''}`}>{value}</div>
     </div>
   )
 }

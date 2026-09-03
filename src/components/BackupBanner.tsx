@@ -8,22 +8,52 @@ import { backupStatus, cloudState } from '../lib/persist'
  * is no way to recover it once it is gone — so nag, visibly, until a second copy
  * exists. Cloud sync counts as that second copy; a manual export is the fallback
  * for when sync is off or has stopped working.
+ *
+ * 2026-09-03 改版：banner 降級成頂列的一顆 chip，點了才展開成卡片。判斷邏輯
+ * （backupStatus / cloudState）、downloadBackup、lastBackupAt 的寫入一個字都
+ * 沒動 —— 只改長相。chip 天天都在、一樣在第一屏、一樣是警示色，只是不再佔 200px。
  */
-export function BackupBanner() {
-  const { data, updateSettings, sync } = useStore()
-  const [busy, setBusy] = useState(false)
-  const [done, setDone] = useState(false)
-
+function useBackupInfo() {
+  const { data, sync } = useStore()
   const cloud = cloudState(sync.status, !!sync.config)
   const status = backupStatus(data.txns.length, data.settings.lastBackupAt, cloud)
-  if (!status.due || done) return null
+  return { status, cloud }
+}
+
+/** 收合態：頂列右側的一顆警示色 chip。 */
+export function BackupChip({ onOpen }: { onOpen: () => void }) {
+  const { status, cloud } = useBackupInfo()
+  if (!status.due) return null
+
+  const label = cloud === 'stuck' ? '同步沒在跑' : status.never ? '未備份' : `${status.days} 天沒備份`
+
+  return (
+    <button
+      onClick={onOpen}
+      className="relative shrink-0 h-[30px] px-3 rounded-full text-[12.5px] font-semibold
+                 bg-warn/14 text-warn-ink flex items-center gap-1 active:scale-95 transition
+                 after:content-[''] after:absolute after:top-1/2 after:left-1/2
+                 after:-translate-x-1/2 after:-translate-y-1/2
+                 after:w-[max(100%,44px)] after:h-11"
+    >
+      ⚠️ {label}
+    </button>
+  )
+}
+
+/** 展開態：點 chip 之後插在頂列下面的卡片。 */
+export function BackupPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { data, updateSettings } = useStore()
+  const { status, cloud } = useBackupInfo()
+  const [busy, setBusy] = useState(false)
+  if (!open || !status.due) return null
 
   const run = async () => {
     setBusy(true)
     try {
       await downloadBackup(data)
       updateSettings({ lastBackupAt: new Date().toISOString() })
-      setDone(true)
+      onClose()
     } catch {
       alert('匯出失敗，請到設定頁再試一次')
     } finally {
@@ -32,7 +62,7 @@ export function BackupBanner() {
   }
 
   return (
-    <div className="rounded-3xl p-3.5 bg-warn/12">
+    <div className="rounded-[18px] p-3.5 bg-warn/12">
       <div className="flex items-start gap-2">
         <span className="text-lg leading-none">⚠️</span>
         <div className="flex-1 min-w-0">
@@ -60,13 +90,22 @@ export function BackupBanner() {
           </p>
         </div>
       </div>
-      <button
-        onClick={run}
-        disabled={busy}
-        className="h-9 px-4 mt-2.5 ml-7 rounded-full bg-warn text-on-warn text-sm font-semibold active:scale-95 transition disabled:bg-surface2 disabled:text-muted"
-      >
-        {busy ? '匯出中…' : '立即匯出備份'}
-      </button>
+      <div className="flex items-center gap-2 mt-2.5 ml-7">
+        <button
+          onClick={run}
+          disabled={busy}
+          className="h-9 px-4 rounded-full bg-warn text-on-warn text-sm font-semibold active:scale-95 transition disabled:bg-surface2 disabled:text-muted"
+        >
+          {busy ? '匯出中…' : '立即匯出備份'}
+        </button>
+        {/* 只收合，不寫 lastBackupAt —— 「知道了」不算備份過。 */}
+        <button
+          onClick={onClose}
+          className="h-9 px-3 rounded-full text-sm text-muted active:bg-surface2 transition"
+        >
+          知道了
+        </button>
+      </div>
     </div>
   )
 }

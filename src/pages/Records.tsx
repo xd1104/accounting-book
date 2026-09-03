@@ -15,6 +15,7 @@ export function Records({ onEditTxn }: { onEditTxn: (id: string) => void }) {
   const [month, setMonth] = useState(() => currentPeriod(data.settings.monthStartDay))
   const [filter, setFilter] = useState<Filter>('all')
   const [q, setQ] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
 
   const s = useMemo(() => summarize(data, month), [data, month])
   const walletRows = useMemo(() => allowanceByWallet(data, month), [data, month])
@@ -38,6 +39,23 @@ export function Records({ onEditTxn }: { onEditTxn: (id: string) => void }) {
 
   return (
     <div className="px-4 pb-6 space-y-3">
+      {/* 頂列：「明細」＋搜尋 chip 合成一行，取代原本沒內容的分頁名列 */}
+      <div className="flex items-center gap-2 pt-3 pb-1 min-h-11">
+        <div className="flex-1 text-[17px] font-bold">明細</div>
+        <button
+          onClick={() => setSearchOpen((v) => !v)}
+          className={`relative shrink-0 h-[30px] px-3 rounded-full text-[12.5px] font-semibold
+                     flex items-center gap-1 active:scale-95 transition
+                     after:content-[''] after:absolute after:top-1/2 after:left-1/2
+                     after:-translate-x-1/2 after:-translate-y-1/2
+                     after:w-[max(100%,44px)] after:h-11 ${
+                       searchOpen ? 'bg-brand text-on-brand' : 'bg-surface2 text-muted'
+                     }`}
+        >
+          🔍 搜尋
+        </button>
+      </div>
+
       {/* month switcher */}
       <div className="flex items-center justify-center gap-1 pt-1">
         <button
@@ -142,12 +160,15 @@ export function Records({ onEditTxn }: { onEditTxn: (id: string) => void }) {
             </button>
           ))}
         </div>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="搜尋"
-          className="w-32 h-10 px-3 rounded-2xl bg-surface2 text-sm outline-none placeholder:text-faint"
-        />
+        {searchOpen && (
+          <input
+            autoFocus
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="搜尋"
+            className="w-32 h-10 px-3 rounded-2xl bg-surface2 text-sm outline-none placeholder:text-faint"
+          />
+        )}
       </div>
 
       {/* grouped list */}

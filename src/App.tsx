@@ -40,31 +40,40 @@ export function App() {
 
   const subTitle = SUB_PAGES[base]
   const isTab = TABS.some((t) => t.path === base)
+  // 首頁與明細頁改成自己畫一行有內容的標題（日期 / 明細＋搜尋），這裡就不用再疊一層
+  // 「首頁」「明細」的分頁名了——那正是兩行沒資訊的問題。統計、設定還沒有自己的標題列，
+  // 維持原本的 App header 顯示分頁名，別跟著拿掉。
+  const ownsHeader = base === '/' || base === '/records'
 
   if (!ready) return <div className="h-full bg-bg" />
 
   return (
     <div className="min-h-full bg-bg">
-      <header className="sticky top-0 z-30 safe-t bg-bg/85 backdrop-blur-xl">
-        <div className="h-12 flex items-center px-2">
-          {subTitle ? (
-            <>
-              <button
-                onClick={back}
-                aria-label="返回"
-                className="w-11 h-11 grid place-items-center rounded-full text-ink active:bg-surface2"
-              >
-                <IconBack className="w-5 h-5" />
-              </button>
-              <span className="font-semibold">{subTitle}</span>
-            </>
-          ) : (
-            <span className="px-2 font-semibold">
-              {TABS.find((t) => t.path === base)?.label ?? '記帳本'}
-            </span>
-          )}
-        </div>
-      </header>
+      {ownsHeader ? (
+        // ⚠️ safe-t 不准刪 —— 它負責瀏海的頂部安全區
+        <div className="sticky top-0 z-30 safe-t bg-bg/85 backdrop-blur-xl" />
+      ) : (
+        <header className="sticky top-0 z-30 safe-t bg-bg/85 backdrop-blur-xl">
+          <div className="h-12 flex items-center px-2">
+            {subTitle ? (
+              <>
+                <button
+                  onClick={back}
+                  aria-label="返回"
+                  className="w-11 h-11 grid place-items-center rounded-full text-ink active:bg-surface2"
+                >
+                  <IconBack className="w-5 h-5" />
+                </button>
+                <span className="font-semibold">{subTitle}</span>
+              </>
+            ) : (
+              <span className="px-2 font-semibold">
+                {TABS.find((t) => t.path === base)?.label ?? '記帳本'}
+              </span>
+            )}
+          </div>
+        </header>
+      )}
 
       <UpdateBanner />
 

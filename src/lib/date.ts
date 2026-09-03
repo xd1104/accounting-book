@@ -92,3 +92,12 @@ export function formatFullDate(date: string): string {
   const d = parseISODate(date)
   return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} (${WEEKDAYS[d.getDay()]})`
 }
+
+/**
+ * 首頁頂列用的日期格式：「9月3日」＋「週四」分開回傳，因為兩段字重不同
+ * （週幾要降一級）。不要改 formatFullDate —— 那個格式在別處可能還會用到。
+ */
+export function formatHomeDate(date: string): { md: string; weekday: string } {
+  const d = parseISODate(date)
+  return { md: `${d.getMonth() + 1}月${d.getDate()}日`, weekday: `週${WEEKDAYS[d.getDay()]}` }
+}

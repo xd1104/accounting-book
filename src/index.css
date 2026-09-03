@@ -21,6 +21,7 @@
   --color-on-warn: var(--on-warn);
   --color-ok-ink: var(--ok-ink);
   --color-warn-ink: var(--warn-ink);
+  --color-tint-bad: var(--tint-bad);
 
   --font-sans:
     ui-rounded, 'SF Pro Rounded', -apple-system, BlinkMacSystemFont, 'Segoe UI',
@@ -48,6 +49,8 @@
      （--ok/--warn 同時是首頁的環與超支警示色），所以文字另開一組。 */
   --ok-ink: #117a39; /* 白底 5.43:1，頁面底 4.95:1，bg-ok/15 上 4.59:1 */
   --warn-ink: #9c5504; /* 白底 5.65:1，頁面底 5.15:1，bg-warn/12 上 4.57:1 */
+  /* 首頁今日卡超支時的底色。只換底色，不是換第二張卡 —— muted 在其上 4.64:1。 */
+  --tint-bad: #fdeeee;
   color-scheme: light;
 }
 
@@ -71,6 +74,7 @@
   /* 深色的綠／黃當文字色本來就有 10.3:1 / 10.8:1，沿用原色、外觀不變。 */
   --ok-ink: var(--ok);
   --warn-ink: var(--warn);
+  --tint-bad: #2b1719;
   color-scheme: dark;
 }
 
