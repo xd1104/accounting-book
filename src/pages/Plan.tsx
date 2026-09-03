@@ -387,11 +387,12 @@ export function Plan() {
                   </span>
                   <div className="flex-1 min-w-0">
                     <div className="text-[15px] font-bold truncate">{r.name}</div>
-                    {done.length > 0 && (
-                      <div className="text-[11px] text-muted tnum truncate">
-                        已轉 {done.length} 項 · {money(r.done, sym)}
-                      </div>
-                    )}
+                    {/* 一項都還沒轉時也要出一行字。留空白會讓卡片看起來像少載了東西。 */}
+                    <div className="text-[11px] text-muted tnum truncate">
+                      {done.length > 0
+                        ? `已轉 ${done.length} 項 · ${money(r.done, sym)}`
+                        : '這個戶頭還沒開始轉'}
+                    </div>
                   </div>
                   <div className="text-right shrink-0">
                     <div className="text-[11px] text-muted">還要轉</div>
