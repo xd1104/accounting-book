@@ -93,6 +93,21 @@ body {
   overscroll-behavior-y: none;
 }
 
+/* 螢幕最底下、版面視口以外的那條（iOS Safari 收合工具列佔掉的區域）。
+ *
+ * 實測 iPhone 16 Pro 的截圖逐像素反推：螢幕 874 CSS px、版面視口只到 812，
+ * 底下 62px 不在網頁的繪圖範圍內。**那條的顏色是 body 的背景色，不是 theme-color**
+ * ——量到的是 #f4f4f6（= --bg），而當時 theme-color 已經是 #ffffff 了。
+ * 瀏覽器把 body 的背景往 canvas propagate、鋪滿整個視窗，theme-color 沒有參與。
+ *
+ * 所以要讓那條看起來像分頁列延伸到底，就得換 body 的背景色 —— 頁面本身的底色
+ * 由 App 根節點的 `bg-bg` 負責畫，換掉 body 的不影響畫面內容。
+ * 只在「有分頁列」的頁面換（`App.tsx` 依 isTab 掛 class）：子頁面沒有分頁列，
+ * 底下那條白的反而會變成一條沒來由的白邊。 */
+body.nav-canvas {
+  background: var(--surface);
+}
+
 /* 按鈕只需要字體族。Tailwind preflight 已經給了 `font: inherit`，
    所以沒寫 text-* 的按鈕會從 body 繼承 16px。 */
 input,

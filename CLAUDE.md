@@ -229,15 +229,22 @@ npm run typecheck  # 型別檢查，改完該跑
   確認方向 → dev 實作**，不要再從稽核直接跳到實作。
 - 分配列的金額欄沒有千分位（群組小計寫 `$38,000`、緊鄰的輸入欄寫 `38000`），
   收入欄已經改了、分配列還沒，同一套邏輯應該一致套用。
-- **iPhone 上底部分頁列下方那條頁面底色 — 已診斷，不是我們的 bug。**
-  從 Benson 的截圖逐像素反推：**版面視口 810 CSS px、螢幕 874**，底下那 64px
-  不在網頁的繪圖範圍內。標題「明細」落在 device y 222–273（不是 30–81）→ 排除
-  「整頁橡皮筋回彈」；分頁列頂邊在 CSS 714 → padding-bottom ≈ 34 →
-  **`env(safe-area-inset-bottom)` 有生效、`viewport-fit=cover` 正常**。
-  standalone 幾何上不可能長這樣 → 那 64px 是**瀏覽器 chrome**（Safari 收合的網址列，
-  或 App 內建瀏覽器）。曾經加的 `-bottom-32` 保險層畫在視口外、永遠不會被合成，
-  **已移除**；現在改用 theme-color = `--surface` 讓瀏覽器替那條上色時用分頁列的顏色。
-  ⚠️ 真機沒驗過（這裡沒有 WebKit）。還在的話先確認他是用主畫面 App 還是 Safari。
+- **iPhone 上底部分頁列下方那條 — 2026-09-04 修好了，機制跟原本的判斷不一樣。**
+  幾何診斷是對的：iPhone 16 Pro 截圖（1206×2622 @3x）逐像素反推，**螢幕 874 CSS px、
+  版面視口只到 812**，底下 62px 不在網頁的繪圖範圍內；分頁列 714→812 剛好 98
+  （`h-16` 64 + safe-b 34），**`env(safe-area-inset-bottom)` 與 `viewport-fit=cover`
+  都正常**（頁面底色一路鋪到螢幕 y=0，確認有蓋到瀏海）。
+  ❌ **但「theme-color 會替那條上色」是錯的。** 量到那條是 `#f4f4f6`（= `--bg`），
+  而當時 theme-color 三處都已經是 `#ffffff` 了。**決定那條顏色的是 body 的背景色**
+  ——瀏覽器把 body 的背景 propagate 到 canvas、鋪滿整個視窗，theme-color 沒有參與。
+  修法：`body.nav-canvas { background: var(--surface) }`，`App.tsx` 依 `isTab` 掛 class。
+  頁面本身的底色由 App 根節點的 `bg-bg` 畫，所以換 body 的不影響畫面內容。
+  ⚠️ **只在有分頁列的頁面換**：子頁面沒有分頁列，底下那條白的會變成沒來由的白邊。
+  ⚠️ 這條在版面視口之外、**不是 DOM**，任何瀏覽器自動化都量不到它。
+  能驗的只有「誰決定它的顏色」（`navcanvas.mjs` 驗 body 的 computed background
+  ＋ 頁面本身沒有被一起換掉）。真機仍然沒驗過（這裡沒有 WebKit）。
+  💡 教訓：**上一輪把「已診斷、不是我們的 bug」寫進待辦就停手了，其實只診斷到一半。**
+  幾何算對不等於機制判對；顏色量一下就知道 theme-color 沒生效。
 
 ---
 

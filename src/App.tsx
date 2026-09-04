@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useStore } from './store'
 import { back, push, segment, useRoute } from './router'
 import { Home } from './pages/Home'
@@ -44,6 +45,12 @@ export function App() {
   // 「首頁」「明細」的分頁名了——那正是兩行沒資訊的問題。統計、設定還沒有自己的標題列，
   // 維持原本的 App header 顯示分頁名，別跟著拿掉。
   const ownsHeader = base === '/' || base === '/records'
+
+  // 見 index.css 的 `body.nav-canvas`：螢幕最底下那條由瀏覽器鋪的區域跟著 body
+  // 的背景色走，有分頁列時要讓它跟分頁列同色，否則會看起來像版面漏了一條。
+  useEffect(() => {
+    document.body.classList.toggle('nav-canvas', isTab)
+  }, [isTab])
 
   if (!ready) return <div className="h-full bg-bg" />
 
