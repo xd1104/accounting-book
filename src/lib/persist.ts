@@ -37,6 +37,46 @@ export function isStandalone(): boolean {
   )
 }
 
+/**
+ * 畫面幾何診斷。
+ *
+ * 為什麼要把這個做進 App：底部分頁列下方那條空白只在 Benson 的真機上出現，
+ * 這裡沒有 WebKit、截圖只能反推、猜了兩輪都猜錯（先猜 theme-color、再猜
+ * 主畫面圖示是舊的，兩次都被實測推翻）。與其再猜第三次，不如讓那台裝置自己講。
+ *
+ * 安全區的值沒有 JS API 可讀，只能拿一個看不見的元素套 env() 再讀 computed padding。
+ */
+export function viewportReport(): string {
+  const el = document.createElement('div')
+  el.style.cssText =
+    'position:fixed;top:0;left:0;width:0;height:0;visibility:hidden;pointer-events:none;' +
+    'padding:env(safe-area-inset-top) env(safe-area-inset-right)' +
+    ' env(safe-area-inset-bottom) env(safe-area-inset-left)'
+  document.body.appendChild(el)
+  const cs = getComputedStyle(el)
+  const n = (v: string) => Math.round(parseFloat(v) || 0)
+  const inset = [n(cs.paddingTop), n(cs.paddingRight), n(cs.paddingBottom), n(cs.paddingLeft)]
+  el.remove()
+
+  const mode =
+    (['standalone', 'fullscreen', 'minimal-ui'] as const).find(
+      (m) => window.matchMedia?.(`(display-mode: ${m})`).matches,
+    ) ?? 'browser'
+  const nav = (navigator as unknown as { standalone?: boolean }).standalone
+  const vv = window.visualViewport
+
+  return [
+    `螢幕 ${screen.width}×${screen.height}`,
+    `視窗 ${window.innerWidth}×${window.innerHeight}`,
+    vv ? `可視 ${Math.round(vv.width)}×${Math.round(vv.height)}` : null,
+    `安全區 ${inset.join('/')}`,
+    `模式 ${mode}${nav === undefined ? '' : nav ? '+ios' : '-ios'}`,
+    `dpr ${window.devicePixelRatio}`,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+
 export function daysSince(iso: string | undefined): number | null {
   if (!iso) return null
   const ms = Date.now() - new Date(iso).getTime()

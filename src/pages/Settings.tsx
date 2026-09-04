@@ -3,7 +3,7 @@ import { useStore } from '../store'
 import type { Theme } from '../store'
 import { downloadBackup, looksLikeBackup, migrate, restorePhotos } from '../lib/storage'
 import { storageEstimate } from '../lib/photos'
-import { backupStatus, cloudState, isPersisted, isStandalone } from '../lib/persist'
+import { backupStatus, cloudState, isPersisted, isStandalone, viewportReport } from '../lib/persist'
 import {
   APP_VERSION,
   applyUpdate,
@@ -26,6 +26,7 @@ export function Settings() {
 
   const [persisted, setPersisted] = useState<boolean | null>(null)
   const standalone = isStandalone()
+  const [viewport, setViewport] = useState(viewportReport)
 
   const [updateReady, setUpdateReady] = useState(isUpdateReady)
   const [checking, setChecking] = useState(false)
@@ -37,6 +38,17 @@ export function Settings() {
   }, [data])
 
   useEffect(() => subscribeUpdate(setUpdateReady), [])
+
+  // 轉向、鍵盤、瀏覽器工具列收合都會改變這些數字，量的當下要是最新的。
+  useEffect(() => {
+    const update = () => setViewport(viewportReport())
+    window.addEventListener('resize', update)
+    window.visualViewport?.addEventListener('resize', update)
+    return () => {
+      window.removeEventListener('resize', update)
+      window.visualViewport?.removeEventListener('resize', update)
+    }
+  }, [])
 
   const doCheckUpdate = async () => {
     setChecking(true)
@@ -263,6 +275,10 @@ export function Settings() {
         {/* 版本號很長，放右邊會把 hint 擠成兩行。版本號本來就該和標籤同一欄才對得齊。 */}
         <Row label="目前跑的版本" hint={APP_VERSION}>
           <span className="text-xs text-muted">這台裝置實際跑的</span>
+        </Row>
+        {/* 真機幾何診斷。這裡沒有 WebKit，底部那條空白只能靠這台裝置自己回報。 */}
+        <Row label="畫面診斷" hint={viewport}>
+          <span className="text-xs text-faint">回報畫面問題時拍這行</span>
         </Row>
         <div className="px-3 pb-3">
           {updateReady ? (
