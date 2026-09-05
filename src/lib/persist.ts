@@ -70,7 +70,8 @@ export function viewportReport(): string {
     `視窗 ${window.innerWidth}×${window.innerHeight}`,
     vv ? `可視 ${Math.round(vv.width)}×${Math.round(vv.height)}` : null,
     `安全區 ${inset.join('/')}`,
-    `dvh ${probeHeight('100dvh')} · vh ${probeHeight('100vh')} · svh ${probeHeight('100svh')}`,
+    `dvh ${probeHeight('100dvh')} · vh ${probeHeight('100vh')} · svh ${probeHeight('100svh')} · lvh ${probeHeight('100lvh')}`,
+    `殼 ${getComputedStyle(document.documentElement).getPropertyValue('--shell-min').trim() || '(無)'}`,
     `模式 ${mode}${nav === undefined ? '' : nav ? '+ios' : '-ios'}`,
     `dpr ${window.devicePixelRatio}`,
   ]

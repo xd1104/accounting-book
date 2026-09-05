@@ -238,12 +238,21 @@ npm run typecheck  # 型別檢查，改完該跑
   ——位移 0，位置是對的），是**視口本身短了一截**，底下那 62px 不在網頁裡，
   看起來就變成「分頁列下面空一條」。
 
-  ✅ **修法：`.app-shell { min-height: calc(100% + 1px) }`**（`index.css`，套在
-  `App.tsx` 的根節點，取代原本的 `min-h-full`）。讓每一頁都有東西可捲，視口就會是
-  完整的 874。`100%` 相對當下視口算：812 → 813 溢出 → 視口變 874 → 875 → 仍溢出，
-  穩定不跳。搭配 body 的 `overscroll-behavior-y: none`，那 1px 感覺不出來。
+  ❌ **第一版修法（`min-height: calc(100% + 1px)`）沒用。** 真機回報
+  `首 h813 b813 · 明 h813 b813 · 統 h874 b874 · 設 h874 b874`
+  ——**視口只跟著長到 813**。所以視口不是「可不可捲」的二分，而是**跟著內容高度走**
+  （量到的行為像 `視口 = min(874, max(812, 內容高))`）。只多 1px 沒有意義。
+
+  ✅ **現在的修法：`.app-shell { min-height: var(--shell-min, calc(100% + 1px)) }`**，
+  `--shell-min` 由 `shellHeight.ts` 在 **standalone 時**設成 `screen.height + 1`。
+  **`screen.height` 是這台裝置上唯一不會隨頁面變的數字**，而 standalone 的視窗
+  就是整個螢幕，所以它就是那個「完整高度」。內容高過整個螢幕，視口就沒有理由縮。
+  ⚠️ **只在 standalone 套**（`isStandalone()`）。一般瀏覽器分頁的視窗比螢幕小很多、
+  桌機更是，拿 `screen.height` 當最小高度會憑空多出一大段可捲的空白。
+  轉向會換掉 `screen.height`，所以 `resize`/`orientationchange` 要重算。
   ⚠️ **不要「順手」把它改回 `min-h-full`** —— 那正是 bug 的樣子。
-  `navcanvas.mjs` 有斷言擋著（四個分頁都必須至少多 1px 可捲）。
+  `navcanvas.mjs` 有斷言擋著（一般分頁不設這個變數；模擬 standalone 時必須等於螢幕高 +1）。
+  ⚠️ **真機還沒確認這版有沒有效。**
 
   🧭 **這題連猜五輪都錯，把彎路記下來，不要重走：**
   1. ❌ **theme-color** —— 決定視口外那條顏色的是 **body 的背景**，不是 theme-color
@@ -270,6 +279,7 @@ npm run typecheck  # 型別檢查，改完該跑
   - ⚠️ **`safe-b` 沒有動、也不要動。** 安全區回報 34 是對的，拿掉它真機上底部橫線會壓到圖示。
 
   📌 **診斷那兩行留著不要拿掉**（`viewportReport()` / `recordNav()`＋`navReport()`，`persist.ts`）。
+  現在也印 `lvh` 與 `殼`（`--shell-min` 目前的值）。
   逛過四個分頁再看設定頁，格式是 **`h視窗高 b分頁列底邊`**，正常應該四頁都是 `h874 b874`。
   **`h` 不是 874 就是這題復發了。**
   ⚠️ 這個格式是有代價換來的：上一版只印「底邊/位移」，四頁都回報 `812/812 d0`

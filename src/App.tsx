@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useStore } from './store'
 import { recordNav } from './lib/persist'
 import { pinAfterRouteChange, watchNavPin } from './lib/navPin'
+import { watchShellHeight } from './lib/shellHeight'
 import { back, push, segment, useRoute } from './router'
 import { Home } from './pages/Home'
 import { Records } from './pages/Records'
@@ -58,6 +59,7 @@ export function App() {
   // 每次釘完都記下結果，設定頁會列出來。
   useEffect(() => pinAfterRouteChange((info) => recordNav(base, info)), [base])
 
+  useEffect(watchShellHeight, [])
   useEffect(watchNavPin, [])
 
   if (!ready) return <div className="h-full bg-bg" />
