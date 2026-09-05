@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useStore } from './store'
 import { recordNav } from './lib/persist'
+import { pinNavToBottom, watchNavPin } from './lib/navPin'
 import { back, push, segment, useRoute } from './router'
 import { Home } from './pages/Home'
 import { Records } from './pages/Records'
@@ -53,12 +54,19 @@ export function App() {
     document.body.classList.toggle('nav-canvas', isTab)
   }, [isTab])
 
-  // 記下這一頁的分頁列實際位置，設定頁會列出來。見 persist.ts 的 recordNav()。
+  // 每次換頁都重新把分頁列釘回視口底部，再記下它落在哪（設定頁會列出來）。
   // 兩次 rAF：第一次之後版面才排好，第二次才量得到穩定的值。
   useEffect(() => {
-    const id = requestAnimationFrame(() => requestAnimationFrame(() => recordNav(base)))
+    const id = requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        pinNavToBottom()
+        recordNav(base)
+      }),
+    )
     return () => cancelAnimationFrame(id)
   }, [base])
+
+  useEffect(watchNavPin, [])
 
   if (!ready) return <div className="h-full bg-bg" />
 
