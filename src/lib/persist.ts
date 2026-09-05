@@ -97,11 +97,13 @@ function probeHeight(value: string): string {
  */
 const navSeen: Record<string, string> = {}
 
-export function recordNav(path: string): void {
-  const n = document.querySelector('nav')
-  if (!n) return
-  const b = n.getBoundingClientRect()
-  navSeen[path] = `${Math.round(b.top)}→${Math.round(b.bottom)}`
+/**
+ * 記下這一頁的分頁列狀況。格式 `底邊(修正前)/底邊(修正後) d位移`，例如 `812/874 d62`
+ * ——一眼看得出「原本歪多少」和「修正有沒有生效」。修正沒生效時兩個數字會一樣。
+ */
+export function recordNav(path: string, info: { raw: number; fixed: number; delta: number } | null): void {
+  if (!info) return
+  navSeen[path] = `${info.raw}/${info.fixed} d${info.delta}`
 }
 
 export function navReport(): string {
