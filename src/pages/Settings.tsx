@@ -34,6 +34,7 @@ export function Settings() {
   const [persisted, setPersisted] = useState<boolean | null>(null)
   const standalone = isStandalone()
   const [viewport, setViewport] = useState(viewportReport)
+  const [devOpen, setDevOpen] = useState(false)
   // 設定頁自己的分頁列位置是在這個元件掛上之後才量到的，要再 render 一次才列得出來。
   const [, bump] = useState(0)
 
@@ -292,13 +293,6 @@ export function Settings() {
         <Row label="目前跑的版本" hint={APP_VERSION}>
           <span className="text-xs text-muted">這台裝置實際跑的</span>
         </Row>
-        {/* 真機幾何診斷。這裡沒有 WebKit，底部那條空白只能靠這台裝置自己回報。 */}
-        <Row label="畫面診斷" hint={viewport}>
-          <span className="text-xs text-faint">回報畫面問題時拍這行</span>
-        </Row>
-        <Row label="各分頁的分頁列位置" hint={navReport()}>
-          <span className="text-xs text-faint">逛過四頁再回來</span>
-        </Row>
         <div className="px-3 pb-3">
           {updateReady ? (
             <>
@@ -325,6 +319,34 @@ export function Settings() {
             </>
           )}
         </div>
+      </Group>
+
+      {/*
+        真機幾何診斷。這裡沒有 WebKit，2026-09 那條「分頁列下面空一塊」的 bug
+        就是靠這兩行才查出來的（見 CLAUDE.md）。平常是看不懂的數字，所以收起來，
+        但**不要刪掉** —— 它同時是那題復發的偵測器。
+      */}
+      <Group title="開發者資訊">
+        <button
+          onClick={() => setDevOpen((v) => !v)}
+          className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-surface2"
+        >
+          <span className="flex-1 text-sm">畫面診斷</span>
+          <span className="text-xs text-muted">回報畫面問題時拍這裡</span>
+          <IconChevronR
+            className={`w-4 h-4 text-faint transition-transform ${devOpen ? 'rotate-90' : ''}`}
+          />
+        </button>
+        {devOpen && (
+          <>
+            <Row label="視口與安全區" hint={viewport}>
+              <span />
+            </Row>
+            <Row label="各分頁的分頁列位置" hint={navReport()}>
+              <span className="text-xs text-faint">逛過四頁再回來</span>
+            </Row>
+          </>
+        )}
       </Group>
 
       <Group title="其他">
