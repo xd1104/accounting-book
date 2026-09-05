@@ -63,7 +63,7 @@ export function App() {
   if (!ready) return <div className="h-full bg-bg" />
 
   return (
-    <div className="min-h-full bg-bg">
+    <div className="app-shell bg-bg">
       {ownsHeader ? (
         // ⚠️ safe-t 不准刪 —— 它負責瀏海的頂部安全區
         <div className="sticky top-0 z-30 safe-t bg-bg/85 backdrop-blur-xl" />

@@ -98,12 +98,16 @@ function probeHeight(value: string): string {
 const navSeen: Record<string, string> = {}
 
 /**
- * 記下這一頁的分頁列狀況。格式 `底邊(修正前)/底邊(修正後) d位移`，例如 `812/874 d62`
- * ——一眼看得出「原本歪多少」和「修正有沒有生效」。修正沒生效時兩個數字會一樣。
+ * 記下這一頁的分頁列狀況。格式 `h視窗高 b分頁列底邊`，例如 `h874 b874`。
+ *
+ * ⚠️ **`h` 一定要印出來。** 上一版只印底邊和位移，結果四頁都是 `812/812 d0`
+ * ——位移 0 看起來像「位置本來就對」，其實是 `innerHeight` 在那兩頁**就是 812**，
+ * 分頁列確實貼在視口底、是視口自己短了一截。少印這個數字就看不出真正的原因。
+ * 兩個數字相等代表分頁列貼齊視口底；`h` 不是 874 就代表視口被縮了。
  */
-export function recordNav(path: string, info: { raw: number; fixed: number; delta: number } | null): void {
+export function recordNav(path: string, info: { fixed: number } | null): void {
   if (!info) return
-  navSeen[path] = `${info.raw}/${info.fixed} d${info.delta}`
+  navSeen[path] = `h${Math.round(window.innerHeight)} b${info.fixed}`
 }
 
 export function navReport(): string {
