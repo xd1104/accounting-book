@@ -93,6 +93,19 @@ body {
   overscroll-behavior-y: none;
 }
 
+/* 設定頁卡片裡的分隔線。
+ *
+ * 每一列自己畫 `border-b` + `last:border-0` 是行不通的：卡片最後常常還接著
+ * 按鈕區、或一個隱藏的 `<input type=file>`，`:last-child` 就不是那一列，
+ * 線於是落在卡片的圓角上，看起來像卡片被切了一刀
+ * （Benson 2026-09-05：「這樣框看起來不圓」）。
+ *
+ * 改成**只畫在相鄰兩列之間**：卡片最底下不會有線，列與按鈕區之間也不會有。
+ * 中間的線碰不到圓角，所以全寬沒問題。 */
+.s-row + .s-row {
+  border-top: 1px solid var(--line);
+}
+
 /* App 外殼永遠比視口高 1px。**看起來像沒必要的 hack，其實是這個 App 最難查的 bug 的解。**
  *
  * iPhone 16 Pro、主畫面 App 實測（設定頁的「畫面診斷」）：

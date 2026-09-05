@@ -151,6 +151,13 @@ npm run typecheck  # 型別檢查，改完該跑
 - **新增了 `formatHomeDate()`（`date.ts`）給首頁頂列用**，回傳 `{ md, weekday }` 兩段
   （字重不同要分開）。**沒有動 `formatFullDate`**——照規格保留，即使目前唯一的呼叫端
   （舊版 `Home.tsx`）已經被這輪換掉了，之後如果真的沒人用可以另外清，這輪不動它。
+- ⭐ **設定頁卡片的分隔線用 `.s-row + .s-row`（`index.css`），不是每列自己畫 `border-b`。**
+  原本每列寫 `border-b border-line last:border-0`，但卡片最後常常還接著按鈕區、
+  或一個隱藏的 `<input type=file>`，`:last-child` 就不是那一列 —— 線落在卡片的圓角上，
+  看起來像卡片被切了一刀（Benson 2026-09-05：「這樣框看起來不圓」）。
+  現在只畫在**相鄰兩列之間**：卡片最底下沒有線，列與按鈕區之間也沒有。
+  `audit.mjs` 有斷言擋著（收合與展開都掃過每張卡片，任何邊框壓在卡片上下緣 2px 內就紅；
+  實測把 `border-bottom` 加回 `.s-row` 會讓它抓到 6 張卡片）。
 - ⭐ **設定頁的「資料備份」與「開發者資訊」也是摺疊列**（`Settings.tsx` 的 `ToggleRow`，
   展開狀態只放在 `useState`）。**收合摘要一定要把警示帶出來**：沒開雲端同步、
   同步壞掉、或太久沒備份時，摘要會顯示「⚠️ …」並套 `text-warn-ink`

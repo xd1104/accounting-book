@@ -420,7 +420,7 @@ function Row({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex items-center gap-3 px-4 py-3 border-b border-line last:border-0">
+    <div className="s-row flex items-center gap-3 px-4 py-3">
       <span className="flex-1 min-w-0">
         <span className="block text-sm">{label}</span>
         {hint && <span className="block text-[11px] text-faint">{hint}</span>}
@@ -452,7 +452,7 @@ function ToggleRow({
   return (
     <button
       onClick={onToggle}
-      className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-surface2 border-b border-line last:border-0"
+      className="s-row w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-surface2"
     >
       <span className="flex-1 text-sm shrink-0">{label}</span>
       {!open && (
@@ -473,7 +473,7 @@ function NavRow({ label, hint, onClick }: { label: string; hint?: string; onClic
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center gap-3 px-4 py-3.5 border-b border-line last:border-0 text-left active:bg-surface2"
+      className="s-row w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-surface2"
     >
       <span className="flex-1 text-sm">{label}</span>
       {hint && <span className="text-xs text-muted">{hint}</span>}
