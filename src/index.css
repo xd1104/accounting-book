@@ -93,6 +93,31 @@ body {
   overscroll-behavior-y: none;
 }
 
+/* 分頁列的定位。**不要改回單純的 `fixed bottom-0`。**
+ *
+ * iPhone 16 Pro、主畫面 App（standalone）實測：`innerHeight` 回報 874、安全區
+ * 62/0/34/0，但在**不會捲動的頁面**（首頁、明細）上，`fixed; bottom: 0` 的分頁列
+ * 落在 714→812 —— 比正確位置高了 62px，剛好是上安全區的高度，底下就空出一條。
+ * 會捲動的頁面（統計、設定）同一份程式碼卻是正確的 776→874。
+ * 也就是說 WebKit 給 fixed 元素的包含塊是 [0, 812]（高度少了上安全區），不是整個視口。
+ * Chromium 完全重現不出來（把安全區硬設成 62/34 量四個分頁都正確），所以是 WebKit 專屬。
+ *
+ * 解法：不依賴包含塊的「高度」，只依賴它的上緣（實測在 0）。用 `top` + `100dvh` 算，
+ * `dvh` 是看視口的、不看包含塊。最壞情況（WebKit 連 dvh 也回 812）是維持現狀、不會更糟。
+ * `@supports` 那層是給沒有 dvh 的舊瀏覽器留的原本行為。
+ * 4rem = h-16 的內容列，1px = border-t，再加上底部安全區。**改高度時這裡要一起改。** */
+.nav-anchor {
+  position: fixed;
+  bottom: 0;
+}
+
+@supports (height: 100dvh) {
+  .nav-anchor {
+    top: calc(100dvh - 4rem - 1px - env(safe-area-inset-bottom, 0px));
+    bottom: auto;
+  }
+}
+
 /* 螢幕最底下、版面視口以外的那條（iOS Safari 收合工具列佔掉的區域）。
  *
  * 實測 iPhone 16 Pro 的截圖逐像素反推：螢幕 874 CSS px、版面視口只到 812，

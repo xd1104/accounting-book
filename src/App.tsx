@@ -97,7 +97,7 @@ export function App() {
       </main>
 
       {isTab && (
-        <nav className="fixed bottom-0 inset-x-0 z-30 safe-b bg-surface/92 backdrop-blur-xl border-t border-line">
+        <nav className="nav-anchor inset-x-0 z-30 safe-b bg-surface/92 backdrop-blur-xl border-t border-line">
           <div className="h-16 grid grid-cols-5 items-center max-w-lg mx-auto">
             {TABS.slice(0, 2).map((t) => (
               <TabButton key={t.path} {...t} active={base === t.path} />
