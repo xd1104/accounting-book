@@ -35,6 +35,7 @@ export function Settings() {
   const standalone = isStandalone()
   const [viewport, setViewport] = useState(viewportReport)
   const [devOpen, setDevOpen] = useState(false)
+  const [backupOpen, setBackupOpen] = useState(false)
   // 設定頁自己的分頁列位置是在這個元件掛上之後才量到的，要再 render 一次才列得出來。
   const [, bump] = useState(0)
 
@@ -80,6 +81,19 @@ export function Settings() {
   const photoCount = data.txns.reduce((n, t) => n + (t.photos?.length ?? 0), 0)
   const cloud = cloudState(sync.status, !!sync.config)
   const backup = backupStatus(data.txns.length, data.settings.lastBackupAt, cloud)
+
+  // 收合時的摘要。同步好好的就報平安，否則把「該備份了」直接寫在收合列上。
+  const backupWarn = cloud !== 'ok' && (backup.due || backup.never)
+  const backupSummary =
+    cloud === 'ok'
+      ? '雲端同步中，不用手動備份'
+      : cloud === 'stuck'
+        ? '⚠️ 同步沒在跑，請匯出備份'
+        : backup.never
+          ? '⚠️ 從來沒有備份過'
+          : backup.due
+            ? `⚠️ ${backup.days} 天沒備份了`
+            : `上次備份：${backup.days === 0 ? '今天' : `${backup.days} 天前`}`
 
   const doExport = async () => {
     setBusy(true)
@@ -201,8 +215,22 @@ export function Settings() {
         />
       </Group>
 
+      {/*
+        資料備份收成摺疊列。⚠️ **收合時的摘要必須把警示帶出來** —— 見 CLAUDE.md
+        「摺疊區不准吃掉警示」：沒開雲端同步、或同步壞掉時，「該備份了」這件事
+        使用者不展開也必須看得到，否則等於沒有提醒。
+      */}
       <Group title="資料備份">
-        <div className="px-4 pb-3 text-xs text-muted">
+        <ToggleRow
+          label="備份與匯出"
+          summary={backupSummary}
+          warn={backupWarn}
+          open={backupOpen}
+          onToggle={() => setBackupOpen((v) => !v)}
+        />
+        {backupOpen && (
+        <>
+        <div className="px-4 pb-3 pt-3 text-xs text-muted">
           {cloud === 'ok' ? (
             <>
               雲端同步開著，每次記帳都會自動上傳，<b className="text-ok-ink">不需要再手動備份</b>。
@@ -272,9 +300,12 @@ export function Settings() {
             匯入備份
           </button>
         </div>
+        </>
+        )}
         {msg && (
           <div className={`px-4 pb-3 text-xs ${msg.bad ? 'text-bad' : 'text-ok-ink'}`}>{msg.text}</div>
         )}
+        {/* 檔案輸入永遠掛著：收合時把它一起拿掉，ref 會變 null。 */}
         <input
           ref={fileRef}
           type="file"
@@ -327,16 +358,12 @@ export function Settings() {
         但**不要刪掉** —— 它同時是那題復發的偵測器。
       */}
       <Group title="開發者資訊">
-        <button
-          onClick={() => setDevOpen((v) => !v)}
-          className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-surface2"
-        >
-          <span className="flex-1 text-sm">畫面診斷</span>
-          <span className="text-xs text-muted">回報畫面問題時拍這裡</span>
-          <IconChevronR
-            className={`w-4 h-4 text-faint transition-transform ${devOpen ? 'rotate-90' : ''}`}
-          />
-        </button>
+        <ToggleRow
+          label="畫面診斷"
+          summary="回報畫面問題時拍這裡"
+          open={devOpen}
+          onToggle={() => setDevOpen((v) => !v)}
+        />
         {devOpen && (
           <>
             <Row label="視口與安全區" hint={viewport}>
@@ -400,6 +427,45 @@ function Row({
       </span>
       {children}
     </div>
+  )
+}
+
+/**
+ * 可以展開的一列。收合時右邊顯示摘要。
+ *
+ * ⚠️ `warn` 會把摘要染成警示色 —— **收合區裡如果有使用者不展開就看不到、
+ * 但他需要知道的事，一定要靠這個帶出來**（見 CLAUDE.md「摺疊區不准吃掉警示」）。
+ */
+function ToggleRow({
+  label,
+  summary,
+  warn,
+  open,
+  onToggle,
+}: {
+  label: string
+  summary: string
+  warn?: boolean
+  open: boolean
+  onToggle: () => void
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-surface2 border-b border-line last:border-0"
+    >
+      <span className="flex-1 text-sm shrink-0">{label}</span>
+      {!open && (
+        <span
+          className={`text-xs truncate ${warn ? 'text-warn-ink font-semibold' : 'text-muted'}`}
+        >
+          {summary}
+        </span>
+      )}
+      <IconChevronR
+        className={`w-4 h-4 shrink-0 text-faint transition-transform ${open ? 'rotate-90' : ''}`}
+      />
+    </button>
   )
 }
 
