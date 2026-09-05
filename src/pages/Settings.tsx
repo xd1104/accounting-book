@@ -3,7 +3,14 @@ import { useStore } from '../store'
 import type { Theme } from '../store'
 import { downloadBackup, looksLikeBackup, migrate, restorePhotos } from '../lib/storage'
 import { storageEstimate } from '../lib/photos'
-import { backupStatus, cloudState, isPersisted, isStandalone, viewportReport } from '../lib/persist'
+import {
+  backupStatus,
+  cloudState,
+  isPersisted,
+  isStandalone,
+  navReport,
+  viewportReport,
+} from '../lib/persist'
 import {
   APP_VERSION,
   applyUpdate,
@@ -27,6 +34,8 @@ export function Settings() {
   const [persisted, setPersisted] = useState<boolean | null>(null)
   const standalone = isStandalone()
   const [viewport, setViewport] = useState(viewportReport)
+  // 設定頁自己的分頁列位置是在這個元件掛上之後才量到的，要再 render 一次才列得出來。
+  const [, bump] = useState(0)
 
   const [updateReady, setUpdateReady] = useState(isUpdateReady)
   const [checking, setChecking] = useState(false)
@@ -38,6 +47,13 @@ export function Settings() {
   }, [data])
 
   useEffect(() => subscribeUpdate(setUpdateReady), [])
+
+  useEffect(() => {
+    const id = requestAnimationFrame(() =>
+      requestAnimationFrame(() => bump((n) => n + 1)),
+    )
+    return () => cancelAnimationFrame(id)
+  }, [])
 
   // 轉向、鍵盤、瀏覽器工具列收合都會改變這些數字，量的當下要是最新的。
   useEffect(() => {
@@ -279,6 +295,9 @@ export function Settings() {
         {/* 真機幾何診斷。這裡沒有 WebKit，底部那條空白只能靠這台裝置自己回報。 */}
         <Row label="畫面診斷" hint={viewport}>
           <span className="text-xs text-faint">回報畫面問題時拍這行</span>
+        </Row>
+        <Row label="各分頁的分頁列位置" hint={navReport()}>
+          <span className="text-xs text-faint">逛過四頁再回來</span>
         </Row>
         <div className="px-3 pb-3">
           {updateReady ? (

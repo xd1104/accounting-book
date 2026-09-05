@@ -70,11 +70,51 @@ export function viewportReport(): string {
     `視窗 ${window.innerWidth}×${window.innerHeight}`,
     vv ? `可視 ${Math.round(vv.width)}×${Math.round(vv.height)}` : null,
     `安全區 ${inset.join('/')}`,
+    `dvh ${probeHeight('100dvh')} · vh ${probeHeight('100vh')} · svh ${probeHeight('100svh')}`,
     `模式 ${mode}${nav === undefined ? '' : nav ? '+ios' : '-ios'}`,
     `dpr ${window.devicePixelRatio}`,
   ]
     .filter(Boolean)
     .join(' · ')
+}
+
+/** 一個看不見的元素設成某個高度單位，回報它實際量到幾 px。單位不支援就回 '-'。 */
+function probeHeight(value: string): string {
+  const el = document.createElement('div')
+  el.style.cssText = `position:fixed;top:0;left:0;width:0;visibility:hidden;pointer-events:none;height:${value}`
+  document.body.appendChild(el)
+  const h = Math.round(el.getBoundingClientRect().height)
+  el.remove()
+  return h > 0 ? String(h) : '-'
+}
+
+/**
+ * 每個分頁的分頁列實際落在哪裡。
+ *
+ * 這題卡在「首頁／明細的分頁列比正確位置高 62px，統計／設定卻正確」，而診斷那行
+ * 只看得到當下這頁（設定頁本來就是對的那一頁）。所以改成每切一個分頁就記一次，
+ * 設定頁再一次列出來 —— 逛過四個分頁再拍一張，四頁的數字就都有了。
+ */
+const navSeen: Record<string, string> = {}
+
+export function recordNav(path: string): void {
+  const n = document.querySelector('nav')
+  if (!n) return
+  const b = n.getBoundingClientRect()
+  navSeen[path] = `${Math.round(b.top)}→${Math.round(b.bottom)}`
+}
+
+export function navReport(): string {
+  const label: Record<string, string> = {
+    '/': '首',
+    '/records': '明',
+    '/stats': '統',
+    '/settings': '設',
+  }
+  const parts = Object.keys(label)
+    .filter((p) => navSeen[p])
+    .map((p) => `${label[p]} ${navSeen[p]}`)
+  return parts.length ? parts.join(' · ') : '（先逛過四個分頁再回來看）'
 }
 
 export function daysSince(iso: string | undefined): number | null {
