@@ -1,7 +1,7 @@
 ---
 currencySymbol: "$"
 monthStartDay: 1
-lastBackupAt: null
+lastBackupAt: "2026-09-28T15:08:18.296Z"
 carryCash: true
 ---
 
