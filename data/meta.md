@@ -27,6 +27,7 @@ carryCash: true
 - {"name":"旅遊費","emoji":"❤️","color":"#3b82f6","kind":"saving","id":"68dd74f1-f9b1-4085-ae6d-26e151b4fcd8","order":9,"walletId":"db4467f8-894c-4604-8201-9df975cdaf57"}
 - {"name":"保險","emoji":"🏥","color":"#ec4899","kind":"fixed","id":"ff147f92-b2bd-4985-8209-62fc403b3dfb","order":10,"walletId":"ca52fa3a-151c-4f83-bb76-9111d058fb73"}
 - {"name":"出國基金","emoji":"✈️","color":"#f97316","kind":"other","id":"1ede35ff-2f33-4511-bd5a-452a77b0cd18","order":11,"walletId":"db4467f8-894c-4604-8201-9df975cdaf57"}
+- {"name":"還黏錢","emoji":"💼","color":"#14b8a6","kind":"other","walletId":"6ef8599e-8f5f-4699-a07a-15ebaed3a7da","id":"042a3128-3a5f-456d-bb2f-df22c25d8a4f","order":12}
 
 ## 分類
 
