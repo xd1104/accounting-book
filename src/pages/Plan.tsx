@@ -3,7 +3,7 @@ import { useStore } from '../store'
 import { emptyPlan, resolvePlan, summarize } from '../lib/budget'
 import { addMonths, currentPeriod, formatMonthLabel, periodRange } from '../lib/date'
 import { money } from '../lib/format'
-import { ACCOUNT_KINDS, KIND_LABEL, WALLET_KIND_LABEL } from '../lib/defaults'
+import { KIND_LABEL, WALLET_KIND_LABEL } from '../lib/defaults'
 import type { Account, Allocation, AllocationSplit, MonthPlan } from '../lib/types'
 import { allocationByWallet, allowanceByWallet } from '../lib/budget'
 import { IconCheck, IconChevronL, IconChevronR, IconPlus, IconTrash } from '../components/icons'
@@ -13,12 +13,25 @@ import { AccountEditor } from '../components/AccountEditor'
 import { Ring } from '../components/Ring'
 
 /** 分配項目在某個存放處裡的一筆——拆分過的項目在每個存放處各出現一筆，金額只算那一份。 */
-interface WalletItemRow {
-  accountId: string
+interface ListRow {
+  alloc: Allocation
   account: Account | null
   amount: number
-  done: boolean
   split: boolean
+}
+
+/** 合併清單的一組：一個存放處，底下是要放進去的分配項目。 */
+interface ListGroup {
+  walletId: string | null
+  name: string
+  emoji: string
+  color: string
+  /** 現金不是轉帳目的地：不算進「還要轉」，標頭也不寫「還要轉」。 */
+  cash: boolean
+  rows: ListRow[]
+  total: number
+  done: number
+  allDone: boolean
 }
 
 export function Plan() {
@@ -31,7 +44,7 @@ export function Plan() {
   const [editing, setEditing] = useState(false)
   /** P2：「轉好了」的戶頭卡預設收合，點開才看到細項（可以反悔取消打勾）。 */
   const [openDone, setOpenDone] = useState<Set<string>>(new Set())
-  /** P2：「分配與設定」底下三條摺疊列各自的展開狀態——畫面狀態，不寫進 IndexedDB。 */
+  /** 「零用錢」底下兩條摺疊列各自的展開狀態——畫面狀態，不寫進 IndexedDB。 */
   const [openSection, setOpenSection] = useState<Set<string>>(new Set())
 
   const { plan, carried, from } = useMemo(() => resolvePlan(data, month), [data, month])
@@ -115,54 +128,53 @@ export function Plan() {
   const transferDoneRatio = transferTotal > 0 ? (transferTotal - transferLeft) / transferTotal : 0
 
   /**
-   * P2 的主體：把分配項目依「錢要轉去哪個戶頭」分組（沿用 transferRows 的聚合），
-   * 每組底下再列出實際的項目——拆分過的項目在每個存放處各算一筆，金額只算那一份。
-   * 現金不列入，理由同 transferRows：現金不是轉帳目的地。
+   * 合併清單：「還要轉」與「本月分配」原本是同一份 allocations 列兩次，現在只列一次，
+   * 依「錢要放去哪個存放處」分組，每列同時能打勾、改金額、點名稱編輯。
+   * 分組規則跟 allocationByWallet 一致（拆分項目在每個存放處各一列、金額只算那一份），
+   * 但金額 0 的項目也要列出來——剛加進來的項目就是 0，不列就沒地方填。
    */
-  const walletItems = useMemo(() => {
-    const map = new Map<string | null, WalletItemRow[]>()
+  const listGroups = useMemo(() => {
+    const map = new Map<string | null, ListRow[]>()
+    const push = (walletId: string | null, row: ListRow) =>
+      map.set(walletId, [...(map.get(walletId) ?? []), row])
     for (const a of plan?.allocations ?? []) {
-      if (a.splits?.length) {
-        for (const sp of a.splits) {
-          if (!sp.amount) continue
-          const arr = map.get(sp.walletId) ?? []
-          arr.push({
-            accountId: a.accountId,
-            account: accounts.find((x) => x.id === a.accountId) ?? null,
-            amount: sp.amount,
-            done: a.done,
-            split: true,
-          })
-          map.set(sp.walletId, arr)
-        }
+      const account = data.accounts.find((x) => x.id === a.accountId) ?? null
+      const parts = a.splits?.filter((sp) => sp.amount) ?? []
+      if (parts.length) {
+        for (const sp of parts) push(sp.walletId, { alloc: a, account, amount: sp.amount, split: true })
       } else {
-        if (!a.amount) continue
-        const walletId = accounts.find((x) => x.id === a.accountId)?.walletId ?? null
-        const arr = map.get(walletId) ?? []
-        arr.push({
-          accountId: a.accountId,
-          account: accounts.find((x) => x.id === a.accountId) ?? null,
-          amount: a.amount,
-          done: a.done,
-          split: false,
-        })
-        map.set(walletId, arr)
+        push(account?.walletId ?? null, { alloc: a, account, amount: a.amount, split: false })
       }
     }
-    return map
-  }, [plan, accounts])
+    const order = (id: string | null) => {
+      const i = data.wallets.findIndex((w) => w.id === id)
+      return i < 0 ? 99 : i
+    }
+    return [...map]
+      .map(([walletId, rows]): ListGroup => {
+        const w = walletId ? data.wallets.find((x) => x.id === walletId) : undefined
+        return {
+          walletId,
+          name: w?.name ?? '未指定存放處',
+          emoji: w?.emoji ?? '❓',
+          color: w?.color ?? '#6b7280',
+          cash: w?.kind === 'cash',
+          rows,
+          total: rows.reduce((n, r) => n + r.amount, 0),
+          done: rows.reduce((n, r) => n + (r.alloc.done ? r.amount : 0), 0),
+          allDone: rows.every((r) => r.alloc.done),
+        }
+      })
+      .sort((x, y) => order(x.walletId) - order(y.walletId))
+  }, [plan, data.accounts, data.wallets])
 
-  const walletGroups = useMemo(
-    () =>
-      transferRows.map((r) => {
-        const rows = walletItems.get(r.walletId) ?? []
-        return { r, rows, pending: rows.filter((x) => !x.done), done: rows.filter((x) => x.done) }
-      }),
-    [transferRows, walletItems],
+  const openGroups = listGroups.filter((g) => !g.allDone)
+  const doneGroups = listGroups.filter((g) => g.allDone)
+  const pendingTransfer = listGroups.filter((g) => !g.cash && g.total - g.done > 0)
+  const pendingItemCount = pendingTransfer.reduce(
+    (n, g) => n + g.rows.filter((r) => !r.alloc.done && r.amount).length,
+    0,
   )
-  const pendingGroups = walletGroups.filter((g) => g.r.total - g.r.done > 0)
-  const doneGroups = walletGroups.filter((g) => g.r.total - g.r.done <= 0)
-  const pendingItemCount = pendingGroups.reduce((n, g) => n + g.pending.length, 0)
 
   /**
    * Which wallets the split section lists: the ones actually holding some of
@@ -240,24 +252,6 @@ export function Plan() {
     return accounts.find((a) => a.id === id) ?? null
   }, [plan, accounts])
 
-  // Group the allocations by type — with many items this is what keeps the list readable.
-  const groups = useMemo(() => {
-    const rows = (plan?.allocations ?? []).map((a) => ({
-      alloc: a,
-      account: accounts.find((x) => x.id === a.accountId) ?? null,
-    }))
-    return ACCOUNT_KINDS.map((kind) => ({
-      kind,
-      rows: rows.filter((r) => (r.account?.kind ?? 'other') === kind),
-    }))
-      .filter((g) => g.rows.length > 0)
-      .concat(
-        rows.some((r) => !r.account)
-          ? [{ kind: 'other' as const, rows: rows.filter((r) => !r.account) }]
-          : [],
-      )
-  }, [plan, accounts])
-
   const totalCount = plan?.allocations.length ?? 0
   const transferAllDone = transferRows.length > 0 && transferLeft <= 0
   const splitSummary = splitRows
@@ -300,11 +294,11 @@ export function Plan() {
         </div>
       )}
 
-      {/* hero：這個月還要轉多少，取代原本「本月收入」卡＋「各存放處合計」卡 */}
+      {/* hero：這個月還要轉多少；底下那行的本月收入直接在這裡改 */}
       <div className="bg-surface rounded-[22px]">
         {totalCount === 0 ? (
-          <div className="px-4 pt-4 pb-4 text-sm text-muted">
-            這個月還沒有分配 — 展開下面「分配與設定」開始 →
+          <div className="px-4 pt-4 pb-3.5 text-sm text-muted">
+            這個月還沒有分配 — 填好收入，再按下面「新增分配項目」開始
           </div>
         ) : (
           <div className="flex items-center gap-3 px-4 pt-4 pb-3.5">
@@ -331,7 +325,7 @@ export function Plan() {
                     {money(transferLeft, sym)}
                   </div>
                   <div className="text-xs text-muted mt-2 tnum">
-                    {pendingItemCount} 筆 · {pendingGroups.length} 個戶頭
+                    {pendingItemCount} 筆 · {pendingTransfer.length} 個戶頭
                   </div>
                 </>
               )}
@@ -344,293 +338,173 @@ export function Plan() {
           </div>
         )}
 
-        {totalCount > 0 && (
-          <>
-            <div className="h-px bg-line mx-4" />
-            <div className="flex items-center justify-between px-4 pt-3 pb-3.5 text-[12.5px]">
-              <span className="text-muted">
-                本月收入 <b className="text-ink font-bold tnum">{money(s.income, sym)}</b>
-              </span>
-              <span
-                className={`font-semibold tnum ${
-                  s.unallocated === 0 ? 'text-ok-ink' : s.unallocated < 0 ? 'text-bad' : 'text-warn-ink'
-                }`}
-              >
-                {s.unallocated === 0
-                  ? '✓ 分配完畢'
-                  : `${s.unallocated > 0 ? '還沒分配' : '超出收入'} ${money(Math.abs(s.unallocated), sym)}`}
-              </span>
-            </div>
-          </>
-        )}
+        <div className="h-px bg-line mx-4" />
+        {/* 收入原本藏在「本月分配」摺疊區裡、這裡只唯讀顯示一次——兩處合成一處。 */}
+        <div className="flex items-center justify-between gap-2 px-4 py-1.5 text-[12.5px]">
+          <label className="flex items-center min-w-0 text-muted">
+            <span className="shrink-0">本月收入</span>
+            <span className="ml-1.5 text-faint">{sym}</span>
+            {/* type=text 才能顯示千分位。輸入時把非數字都濾掉。
+                字級不能低於 16px：iOS 會自動放大（見 index.css 那條無層級規則）。 */}
+            <input
+              type="text"
+              inputMode="numeric"
+              aria-label="本月收入"
+              value={plan?.income ? plan.income.toLocaleString('en-US') : ''}
+              placeholder="0"
+              onChange={(e) => write({ income: Number(e.target.value.replace(/\D/g, '')) || 0 })}
+              className="w-[7.5rem] h-10 px-1 rounded-lg bg-transparent font-bold text-ink tnum outline-none focus:bg-surface2 placeholder:text-faint"
+            />
+          </label>
+          {totalCount > 0 && (
+            <span
+              className={`shrink-0 font-semibold tnum ${
+                s.unallocated === 0 ? 'text-ok-ink' : s.unallocated < 0 ? 'text-bad' : 'text-warn-ink'
+              }`}
+            >
+              {s.unallocated === 0
+                ? '✓ 分配完畢'
+                : `${s.unallocated > 0 ? '還沒分配' : '超出收入'} ${money(Math.abs(s.unallocated), sym)}`}
+            </span>
+          )}
+        </div>
       </div>
 
-      {/* 還要轉：主體改成依「錢要轉去哪個戶頭」分組 — 12 個分配項目通常只對應幾次實際轉帳 */}
-      {pendingGroups.length > 0 && (
-        <div className="space-y-2">
-          <div className="flex items-baseline justify-between px-1">
-            <span className="text-[12.5px] font-bold text-muted">還要轉</span>
-            <span className="text-[12.5px] text-faint tnum">
-              {pendingGroups.length} 個戶頭 · {money(transferLeft, sym)}
-            </span>
-          </div>
-          {pendingGroups.map(({ r, rows, done }) => {
-            const left = r.total - r.done
-            return (
-              <div key={r.walletId ?? 'none'} className="bg-surface rounded-3xl p-2">
-                <div className="flex items-center gap-2 px-2 pt-2">
-                  <span
-                    className="w-9 h-9 shrink-0 grid place-items-center rounded-full text-base"
-                    style={{ background: `${r.color}22` }}
-                  >
-                    {r.emoji}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[15px] font-bold truncate">{r.name}</div>
-                    {/* 一項都還沒轉時也要出一行字。留空白會讓卡片看起來像少載了東西。 */}
-                    <div className="text-[11px] text-muted tnum truncate">
-                      {done.length > 0
-                        ? `已轉 ${done.length} 項 · ${money(r.done, sym)}`
-                        : '這個戶頭還沒開始轉'}
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="text-[11px] text-muted">還要轉</div>
-                    <div className="text-[16px] font-extrabold text-brand tnum">{money(left, sym)}</div>
-                  </div>
-                </div>
-                <div className="h-px bg-line mx-2 my-2" />
-                <div className="space-y-0.5">
-                  {rows
-                    .filter((x) => !x.done)
-                    .map((row) => (
-                      <WalletItemButton key={row.accountId} row={row} sym={sym} onToggle={toggleDone} />
-                    ))}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* 轉好了：一組轉完就收成一行，點開可以反悔取消打勾 */}
-      {doneGroups.length > 0 && (
-        <div className="space-y-2">
-          <div className="px-1 text-[12.5px] font-bold text-muted">
-            轉好了 <span className="text-faint font-normal">{doneGroups.length} 個戶頭</span>
-          </div>
-          {doneGroups.map(({ r, rows }) => {
-            const key = r.walletId ?? 'none'
-            const open = openDone.has(key)
-            return (
-              <div key={key} className="bg-surface rounded-3xl overflow-hidden">
-                <button
-                  onClick={() => toggleOpenDone(key)}
-                  className="w-full min-h-[52px] px-3 flex items-center gap-2 text-left active:bg-surface2 transition"
-                >
-                  <span className="w-5 h-5 shrink-0 grid place-items-center rounded-full bg-ok text-on-ok">
-                    <IconCheck className="w-3 h-3" />
-                  </span>
-                  <span className="flex-1 min-w-0 truncate text-[14px] text-muted">
-                    {r.emoji} {r.name}
-                  </span>
-                  <span className="text-[14px] text-muted tnum">{money(r.total, sym)}</span>
-                  <IconChevronR
-                    className={`w-4 h-4 text-faint shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}
-                  />
-                </button>
-                {open && (
-                  <div className="px-2 pb-2 space-y-0.5">
-                    {rows.map((row) => (
-                      <WalletItemButton key={row.accountId} row={row} sym={sym} onToggle={toggleDone} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* 分配與設定：改名字、動零用錢設定都是幾個月一次的事，收成三條摺疊列 */}
-      <div>
-        <div className="px-1 pb-2 text-[12.5px] font-bold text-muted">分配與設定</div>
-        <div className="bg-surface rounded-3xl divide-y divide-line overflow-hidden">
-          <CollapsibleRow
-            label="本月分配"
-            summary={totalCount > 0 ? `${totalCount} 項 · ${money(s.income, sym)}` : '還沒有項目'}
-            open={openSection.has('alloc')}
-            onToggle={() => toggleSection('alloc')}
-          >
-            {/* income */}
-            <div className="px-3 pt-1 pb-3">
-              <label className="block text-xs text-muted mb-1">本月收入</label>
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-xl text-faint">{sym}</span>
-                {/* type=text 才能顯示千分位。輸入時把非數字都濾掉。 */}
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={plan?.income ? plan.income.toLocaleString('en-US') : ''}
-                  placeholder="0"
-                  onChange={(e) => write({ income: Number(e.target.value.replace(/\D/g, '')) || 0 })}
-                  /* inline style 才贏得過 index.css 那條無層級的 16px 下限（見該檔註解） */
-                  style={{ fontSize: 24 }}
-                  className="flex-1 bg-transparent text-2xl font-bold tnum outline-none min-w-0 placeholder:text-faint"
-                />
-              </div>
-              {plan && plan.income > 0 && (
-                <>
-                  <div className="mt-2.5 h-1.5 rounded-full bg-surface2 overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-[width] duration-500 ${
-                        s.unallocated < 0 ? 'bg-bad' : s.unallocated === 0 ? 'bg-ok' : 'bg-brand'
-                      }`}
-                      style={{ width: `${Math.min(100, (s.allocated / plan.income) * 100)}%` }}
-                    />
-                  </div>
-                  <div className="mt-1.5 flex items-baseline justify-between text-xs">
-                    <span className="text-muted tnum">已分配 {money(s.allocated, sym)}</span>
-                    <span
-                      className={`tnum font-semibold ${
-                        s.unallocated === 0
-                          ? 'text-ok-ink'
-                          : s.unallocated < 0
-                            ? 'text-bad'
-                            : 'text-warn-ink'
-                      }`}
-                    >
-                      {s.unallocated === 0
-                        ? '✓ 分配完畢'
-                        : `${s.unallocated > 0 ? '還沒分配' : '超出收入'} ${money(Math.abs(s.unallocated), sym)}`}
-                    </span>
-                  </div>
-                </>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between pl-3 pr-1 pt-1 pb-1">
-              <span className="text-xs text-faint tnum">
-                {(plan?.allocations.length ?? 0) > 0 && `${plan?.allocations.length} 項`}
+      {/* 本月分配：原本的「還要轉」與「本月分配」是同一份資料列兩次，合成一份依存放處分組的清單。
+          平常點列＝打勾；按「編輯」之後點名稱才開項目編輯器、才出現垃圾桶。 */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between pl-1">
+          <span className="text-[12.5px] font-bold text-muted">
+            本月分配
+            {totalCount > 0 && (
+              <span className="ml-1.5 text-faint font-normal tnum">
+                {editing ? '點名稱可以改項目' : `${totalCount} 項 · 點一下打勾`}
               </span>
-              {(plan?.allocations.length ?? 0) > 0 && (
-                <button
-                  onClick={() => setEditing((v) => !v)}
-                  className={`h-8 px-3 rounded-full text-xs font-semibold active:scale-95 transition ${
-                    editing ? 'bg-brand text-on-brand' : 'text-brand active:bg-surface2'
-                  }`}
+            )}
+          </span>
+          {totalCount > 0 && (
+            <button
+              onClick={() => setEditing((v) => !v)}
+              className={`h-8 px-3 rounded-full text-xs font-semibold active:scale-95 transition ${
+                editing ? 'bg-brand text-on-brand' : 'text-brand active:bg-surface2'
+              }`}
+            >
+              {editing ? '完成' : '編輯'}
+            </button>
+          )}
+        </div>
+
+        {openGroups.map((g) => {
+          const left = g.total - g.done
+          const doneCount = g.rows.filter((r) => r.alloc.done).length
+          return (
+            <div key={g.walletId ?? 'none'} className="bg-surface rounded-3xl p-2">
+              <div className="flex items-center gap-2 px-2 pt-2">
+                <span
+                  className="w-9 h-9 shrink-0 grid place-items-center rounded-full text-base"
+                  style={{ background: `${g.color}22` }}
                 >
-                  {editing ? '完成' : '編輯'}
-                </button>
+                  {g.emoji}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[15px] font-bold truncate">{g.name}</div>
+                  {/* 一項都還沒轉時也要出一行字。留空白會讓卡片看起來像少載了東西。 */}
+                  <div className="text-[11px] text-muted tnum truncate">
+                    {g.cash
+                      ? '現金，不用轉帳'
+                      : !g.walletId
+                        ? '按「編輯」點名稱，指定要放哪'
+                        : doneCount > 0
+                          ? `已轉 ${doneCount} 項 · ${money(g.done, sym)}`
+                          : '這個戶頭還沒開始轉'}
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-[11px] text-muted">{g.cash ? '合計' : '還要轉'}</div>
+                  <div className={`text-[16px] font-extrabold tnum ${g.cash ? '' : 'text-brand'}`}>
+                    {money(g.cash ? g.total : left, sym)}
+                  </div>
+                </div>
+              </div>
+              <div className="h-px bg-line mx-2 mt-2" />
+              <div className="divide-y divide-line">
+                {g.rows.map((row) => (
+                  <AllocRow
+                    key={row.alloc.accountId}
+                    row={row}
+                    sym={sym}
+                    allowance={plan?.allowanceAccountId === row.alloc.accountId}
+                    editing={editing}
+                    onToggle={() => toggleDone(row.alloc.accountId)}
+                    onOpen={() => row.account && setEditingAccount(row.account)}
+                    onAmount={(v) => setAllocation(row.alloc.accountId, v)}
+                    onRemove={() => removeAllocation(row.alloc.accountId)}
+                  />
+                ))}
+              </div>
+            </div>
+          )
+        })}
+
+        {/* 轉好了：一組都打勾就收成一行，點開可以反悔取消打勾、也能改金額 */}
+        {doneGroups.length > 0 && (
+          <div className="px-1 pt-1 text-[12.5px] font-bold text-muted">
+            轉好了 <span className="text-faint font-normal">{doneGroups.length} 個存放處</span>
+          </div>
+        )}
+        {doneGroups.map((g) => {
+          const key = g.walletId ?? 'none'
+          const open = openDone.has(key)
+          return (
+            <div key={key} className="bg-surface rounded-3xl overflow-hidden">
+              <button
+                onClick={() => toggleOpenDone(key)}
+                className="w-full min-h-[52px] px-3 flex items-center gap-2 text-left active:bg-surface2 transition"
+              >
+                <span className="w-5 h-5 shrink-0 grid place-items-center rounded-full bg-ok text-on-ok">
+                  <IconCheck className="w-3 h-3" />
+                </span>
+                <span className="flex-1 min-w-0 truncate text-[14px] text-muted">
+                  {g.emoji} {g.name}
+                </span>
+                <span className="text-[14px] text-muted tnum">{money(g.total, sym)}</span>
+                <IconChevronR
+                  className={`w-4 h-4 text-faint shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}
+                />
+              </button>
+              {open && (
+                <div className="px-2 pb-1 divide-y divide-line">
+                  {g.rows.map((row) => (
+                    <AllocRow
+                      key={row.alloc.accountId}
+                      row={row}
+                      sym={sym}
+                      allowance={plan?.allowanceAccountId === row.alloc.accountId}
+                      editing={editing}
+                      onToggle={() => toggleDone(row.alloc.accountId)}
+                      onOpen={() => row.account && setEditingAccount(row.account)}
+                      onAmount={(v) => setAllocation(row.alloc.accountId, v)}
+                      onRemove={() => removeAllocation(row.alloc.accountId)}
+                    />
+                  ))}
+                </div>
               )}
             </div>
+          )
+        })}
 
-            {groups.length === 0 ? (
-              <div className="py-6 text-center text-sm text-faint">
-                還沒有分配
-                <br />
-                <span className="text-xs">按下方「新增分配項目」開始</span>
-              </div>
-            ) : (
-              groups.map((g) => {
-                const subtotal = g.rows.reduce((n, r) => n + r.alloc.amount, 0)
-                return (
-                  <div key={g.kind} className="pt-2">
-                    <div className="flex items-baseline justify-between px-3 pt-1 pb-1.5">
-                      <span className="text-xs font-semibold text-ink/70">{KIND_LABEL[g.kind]}</span>
-                      <span className="text-xs text-faint tnum">{money(subtotal, sym)}</span>
-                    </div>
-                    <div className="divide-y divide-line">
-                      {g.rows.map(({ alloc: a, account: acc }) => (
-                        <div key={a.accountId} className="flex items-center gap-2 px-2 py-1.5">
-                          {/* 一個月要按 12 次，觸控目標放大到 44×44；視覺圓圈維持 24。 */}
-                          <button
-                            onClick={() => toggleDone(a.accountId)}
-                            aria-label={a.done ? '標記為未轉帳' : '標記為已轉帳'}
-                            className="w-11 h-11 -my-1 shrink-0 grid place-items-center rounded-full active:scale-90 transition"
-                          >
-                            <span
-                              className={`w-6 h-6 grid place-items-center rounded-full ${
-                                a.done ? 'bg-ok text-on-ok' : 'border-2 border-line text-transparent'
-                              }`}
-                            >
-                              <IconCheck className="w-3.5 h-3.5" />
-                            </span>
-                          </button>
+        <button
+          onClick={() => (unused.length > 0 ? setPicking(true) : setEditingAccount('new'))}
+          className="w-full h-11 rounded-2xl text-sm font-medium text-brand flex items-center justify-center gap-1 active:bg-surface2"
+        >
+          <IconPlus className="w-4 h-4" /> 新增分配項目
+        </button>
+      </div>
 
-                          {/* tapping the name edits the item itself — 移進這個摺疊區之後才點得到，
-                              不再是分配頁一打開就有 12 顆可以誤觸的按鈕 */}
-                          <button
-                            onClick={() => acc && setEditingAccount(acc)}
-                            className="flex items-center gap-2 flex-1 min-w-0 min-h-11 text-left active:opacity-60"
-                          >
-                            <span
-                              className="w-8 h-8 shrink-0 grid place-items-center rounded-xl text-base"
-                              style={{ background: `${acc?.color ?? '#6b7280'}1f` }}
-                            >
-                              {acc?.emoji ?? '💼'}
-                            </span>
-                            <span className="min-w-0">
-                              <span className={`block text-sm truncate ${a.done ? 'text-muted' : ''}`}>
-                                {acc?.name ?? '（項目已刪除）'}
-                                {plan?.allowanceAccountId === a.accountId && (
-                                  <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-brand-soft text-brand align-middle">
-                                    零用錢
-                                  </span>
-                                )}
-                              </span>
-                              <span className="block text-[10px] text-faint truncate">
-                                {a.splits?.length
-                                  ? a.splits
-                                      .map(
-                                        (sp) =>
-                                          wallets.find((w) => w.id === sp.walletId)?.name ?? '未指定',
-                                      )
-                                      .join(' + ')
-                                  : (wallets.find((w) => w.id === acc?.walletId)?.name ?? '未指定存放處')}
-                              </span>
-                            </span>
-                          </button>
-
-                          {/* Borderless so twelve rows read as one column of numbers; the
-                              field only looks like a field once it is being edited. */}
-                          <input
-                            type="number"
-                            inputMode="numeric"
-                            value={a.amount || ''}
-                            placeholder="0"
-                            readOnly={!!a.splits?.length}
-                            title={a.splits?.length ? '由下方「零用錢放在哪」的金額加總' : undefined}
-                            onChange={(e) => setAllocation(a.accountId, Number(e.target.value) || 0)}
-                            className={`w-[88px] h-10 px-2 shrink-0 text-right rounded-lg tnum text-sm font-semibold outline-none bg-transparent transition ${
-                              a.splits?.length ? 'text-muted' : 'focus:bg-surface2'
-                            }`}
-                          />
-                          {editing && (
-                            <button
-                              onClick={() => removeAllocation(a.accountId)}
-                              aria-label="移除"
-                              className="w-8 h-8 shrink-0 grid place-items-center rounded-lg text-faint active:text-bad"
-                            >
-                              <IconTrash className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )
-              })
-            )}
-
-            <button
-              onClick={() => (unused.length > 0 ? setPicking(true) : setEditingAccount('new'))}
-              className="w-full h-11 mt-1 rounded-2xl text-sm font-medium text-brand flex items-center justify-center gap-1 active:bg-surface2"
-            >
-              <IconPlus className="w-4 h-4" /> 新增分配項目
-            </button>
-          </CollapsibleRow>
-
+      {/* 零用錢：幾個月才動一次的設定，收成兩條摺疊列 */}
+      <div>
+        <div className="px-1 pb-2 text-[12.5px] font-bold text-muted">零用錢</div>
+        <div className="bg-surface rounded-3xl divide-y divide-line overflow-hidden">
           <CollapsibleRow
             label="零用錢設定"
             summary={allowanceUnfunded ? '⚠️ 來源還沒分配到錢' : `每天 ${money(s.dailyAllowance, sym)}`}
@@ -865,39 +739,107 @@ export function Plan() {
   )
 }
 
-/** 「還要轉」／「轉好了」戶頭卡裡的一列：打勾＝標記那一整筆 allocation 已轉帳。 */
-function WalletItemButton({
+/**
+ * 合併清單的一列：打勾＋名稱＋金額。
+ * 平常整個左半邊都是打勾鈕（轉帳那天一路點下去）；「編輯」模式下點名稱改開項目編輯器，
+ * 名稱不會一打開頁面就是十幾顆誤觸會跳出編輯器的按鈕。打勾對整筆 allocation 生效，
+ * 拆分項目在每個存放處各一列、會一起變。
+ */
+function AllocRow({
   row,
   sym,
+  allowance,
+  editing,
   onToggle,
+  onOpen,
+  onAmount,
+  onRemove,
 }: {
-  row: WalletItemRow
+  row: ListRow
   sym: string
-  onToggle: (accountId: string) => void
+  allowance: boolean
+  editing: boolean
+  onToggle: () => void
+  onOpen: () => void
+  onAmount: (amount: number) => void
+  onRemove: () => void
 }) {
+  const done = row.alloc.done
+  const label = done ? '標記為未轉帳' : '標記為已轉帳'
   return (
-    <button
-      onClick={() => onToggle(row.accountId)}
-      aria-label={row.done ? '標記為未轉帳' : '標記為已轉帳'}
-      className="w-full flex items-center gap-2 min-h-[46px] px-1 text-left rounded-xl active:bg-surface2 transition"
-    >
-      <span
-        className={`w-5 h-5 shrink-0 grid place-items-center rounded-full ${
-          row.done ? 'bg-ok text-on-ok' : 'border-2 border-line text-transparent'
-        }`}
+    <div className="flex items-center gap-1 pr-1 py-0.5">
+      {/* 觸控目標 44×44；視覺圓圈維持 24。 */}
+      <button
+        onClick={onToggle}
+        aria-label={label}
+        className="w-11 h-11 shrink-0 grid place-items-center rounded-full active:scale-90 transition"
       >
-        <IconCheck className="w-3 h-3" />
-      </span>
-      <span className="flex-1 min-w-0 truncate text-[14px]">
-        {row.account?.emoji} {row.account?.name ?? '（已刪除）'}
-        {row.split && <span className="ml-1 text-[11.5px] text-muted">拆分</span>}
-      </span>
-      <span className="tnum text-[14px] font-semibold shrink-0">{money(row.amount, sym)}</span>
-    </button>
+        <span
+          className={`w-6 h-6 grid place-items-center rounded-full ${
+            done ? 'bg-ok text-on-ok' : 'border-2 border-line text-transparent'
+          }`}
+        >
+          <IconCheck className="w-3.5 h-3.5" />
+        </span>
+      </button>
+
+      <button
+        onClick={editing ? onOpen : onToggle}
+        aria-label={editing ? undefined : label}
+        className="flex items-center gap-2 flex-1 min-w-0 min-h-11 text-left active:opacity-60"
+      >
+        <span
+          className="w-8 h-8 shrink-0 grid place-items-center rounded-xl text-base"
+          style={{ background: `${row.account?.color ?? '#6b7280'}1f` }}
+        >
+          {row.account?.emoji ?? '💼'}
+        </span>
+        <span className="min-w-0">
+          <span
+            className={`block text-sm truncate ${done ? 'text-muted' : ''} ${
+              editing ? 'underline decoration-line decoration-dotted underline-offset-4' : ''
+            }`}
+          >
+            {row.account?.name ?? '（項目已刪除）'}
+            {allowance && (
+              <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-brand-soft text-brand align-middle">
+                零用錢
+              </span>
+            )}
+          </span>
+          {row.split && <span className="block text-[10px] text-faint truncate">拆分的其中一份</span>}
+        </span>
+      </button>
+
+      {/* 無邊框，十幾列讀起來才是一欄數字；focus 了才看得出是輸入框。
+          type=text 才能顯示千分位（跟本月收入同一套），輸入時把非數字都濾掉。 */}
+      <input
+        type="text"
+        inputMode="numeric"
+        aria-label={`${row.account?.name ?? '項目'}金額`}
+        value={row.amount ? row.amount.toLocaleString('en-US') : ''}
+        placeholder={`${sym}0`}
+        readOnly={row.split}
+        title={row.split ? '由下方「零用錢放在哪」的金額加總' : undefined}
+        onChange={(e) => onAmount(Number(e.target.value.replace(/\D/g, '')) || 0)}
+        className={`w-[88px] h-10 px-2 shrink-0 text-right rounded-lg tnum text-sm font-semibold outline-none bg-transparent transition ${
+          row.split ? 'text-muted' : done ? 'text-muted focus:bg-surface2' : 'focus:bg-surface2'
+        }`}
+      />
+      {editing && (
+        <button
+          onClick={onRemove}
+          aria-label="移除"
+          className="w-8 h-8 shrink-0 grid place-items-center rounded-lg text-faint active:text-bad"
+        >
+          <IconTrash className="w-4 h-4" />
+        </button>
+      )}
+    </div>
   )
 }
 
-/** 「分配與設定」底下的一條摺疊列：收合時右側顯示摘要，展開時摘要拿掉、改顯示內容。 */
+/** 「零用錢」底下的一條摺疊列：收合時右側顯示摘要，展開時摘要拿掉、改顯示內容。 */
 function CollapsibleRow({
   label,
   summary,
