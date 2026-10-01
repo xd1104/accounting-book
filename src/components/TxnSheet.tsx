@@ -11,6 +11,7 @@ import { getPlan } from '../lib/budget'
 import { uid } from '../lib/defaults'
 import { compressImage, deletePhotos, putPhoto } from '../lib/photos'
 import { PhotoThumb, PhotoViewer } from './Photo'
+import { useDeleteTxn } from '../lib/useDeleteTxn'
 
 interface Props {
   open: boolean
@@ -21,7 +22,8 @@ interface Props {
 }
 
 export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
-  const { data, addTxn, updateTxn, deleteTxn } = useStore()
+  const { data, addTxn, updateTxn } = useStore()
+  const removeTxn = useDeleteTxn()
   const editing = editId ? data.txns.find((t) => t.id === editId) ?? null : null
 
   const [type, setType] = useState<TxnType>('expense')
@@ -158,13 +160,12 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
     onClose()
   }
 
+  /** 不再先跳 confirm()：直接刪、底部給 5 秒復原（照片也等復原期過了才刪）。 */
   const remove = () => {
     if (!editing) return
-    if (confirm('刪除這筆記錄？')) {
-      savedRef.current = true
-      deleteTxn(editing.id)
-      onClose()
-    }
+    savedRef.current = true
+    removeTxn(editing.id)
+    onClose()
   }
 
   const sym = data.settings.currencySymbol
@@ -175,6 +176,7 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
     <Sheet
       open={open}
       onClose={cancel}
+      dismissFromBody={false}
       // Hug the (now compact) form; only claim the screen once the keypad is up.
       full={padOpen}
       footer={

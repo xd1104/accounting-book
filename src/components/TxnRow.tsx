@@ -1,16 +1,20 @@
 import type { AppData, Txn } from '../lib/types'
 import { money } from '../lib/format'
 import { usePhotoURL } from './Photo'
+import { SwipeRow } from './SwipeRow'
 
 export function TxnRow({
   txn,
   data,
   onClick,
+  onDelete,
   showDate,
 }: {
   txn: Txn
   data: AppData
   onClick?: () => void
+  /** 給了就可以往左滑刪除（iOS 內建 App 的手勢） */
+  onDelete?: () => void
   showDate?: boolean
 }) {
   const cat = data.categories.find((c) => c.id === txn.categoryId)
@@ -20,7 +24,7 @@ export function TxnRow({
   const photoURL = usePhotoURL(firstPhoto)
   const md = txn.date.slice(5).replace('-', '/')
 
-  return (
+  const row = (
     <button
       onClick={onClick}
       className="w-full flex items-center gap-2.5 p-2 rounded-[14px] text-left min-h-[46px] transition active:bg-surface2"
@@ -60,5 +64,12 @@ export function TxnRow({
         {money(txn.amount, sym).replace('-', '')}
       </span>
     </button>
+  )
+  return onDelete ? (
+    <SwipeRow onDelete={onDelete} className="rounded-[14px]">
+      {row}
+    </SwipeRow>
+  ) : (
+    row
   )
 }

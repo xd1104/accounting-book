@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { Account, AppData, Category, MonthPlan, Settings, Txn, Wallet } from './lib/types'
+import type { Account, Allocation, AppData, Category, MonthPlan, Settings, Txn, Wallet } from './lib/types'
 import { LocalStorageAdapter } from './lib/storage'
 import type { StorageAdapter } from './lib/storage'
 import { emptyData, uid } from './lib/defaults'
@@ -18,9 +18,19 @@ interface Store {
 
   addTxn: (t: Omit<Txn, 'id' | 'createdAt' | 'updatedAt'>) => string
   updateTxn: (id: string, patch: Partial<Txn>) => void
-  deleteTxn: (id: string) => void
+  /** keepPhotos：刪除可以復原時先別刪照片，等復原期過了再刪（見 lib/undo.ts）。 */
+  deleteTxn: (id: string, opts?: { keepPhotos?: boolean }) => void
+  /** 把剛刪掉的記錄原封不動放回來（同一個 id）。 */
+  restoreTxn: (txn: Txn) => void
 
   savePlan: (plan: MonthPlan) => void
+  /** 把剛刪掉的分配項目放回那個月份的原位置。用 mutate 讀最新資料，不怕閉包過期。 */
+  restoreAllocation: (month: string, alloc: Allocation, index: number) => void
+  /**
+   * 復原期間先別同步：同步完會清掉「沒有記錄引用的照片」（本機與雲端都會），
+   * 復原回來的記錄就少了照片。回傳的函式放開這個保留，放開後若有改動就補同步一次。
+   */
+  holdSync: () => () => void
 
   addCategory: (c: Omit<Category, 'id' | 'order'>) => void
   updateCategory: (id: string, patch: Partial<Category>) => void
@@ -159,13 +169,15 @@ export function StoreProvider({
   const dataRef = useRef(data)
   dataRef.current = data
   const syncing = useRef(false)
+  /** holdSync() 的計數，>0 時 runSync 直接跳過。 */
+  const syncHold = useRef(0)
   /** Mirrors sync.status for the async callbacks, which cannot read state directly. */
   const syncStatus = useRef(sync.status)
   syncStatus.current = sync.status
 
   const runSync = useCallback(async () => {
     const cfg = loadSyncConfig()
-    if (!cfg || syncing.current) return
+    if (!cfg || syncing.current || syncHold.current > 0) return
     // An unresolved conflict is waiting on the user, and every retry re-reads the
     // whole repo only to reach the same answer. Editing while the question is on
     // screen would otherwise fire one full read every few seconds.
@@ -274,16 +286,38 @@ export function StoreProvider({
           ),
         }))
       },
-      deleteTxn(id) {
+      deleteTxn(id, opts) {
         mutate((d) => {
           const gone = d.txns.find((t) => t.id === id)
-          if (gone?.photos?.length) deletePhotos(gone.photos)
+          if (gone?.photos?.length && !opts?.keepPhotos) deletePhotos(gone.photos)
           return { ...d, txns: d.txns.filter((t) => t.id !== id) }
         })
+      },
+      restoreTxn(txn) {
+        mutate((d) => (d.txns.some((t) => t.id === txn.id) ? d : { ...d, txns: [...d.txns, txn] }))
       },
 
       savePlan(plan) {
         mutate((d) => ({ ...d, plans: { ...d.plans, [plan.month]: plan } }))
+      },
+      restoreAllocation(month, alloc, index) {
+        mutate((d) => {
+          const p = d.plans[month]
+          if (!p || p.allocations.some((a) => a.accountId === alloc.accountId)) return d
+          const allocations = [...p.allocations]
+          allocations.splice(Math.min(index, allocations.length), 0, alloc)
+          return { ...d, plans: { ...d.plans, [month]: { ...p, allocations } } }
+        })
+      },
+      holdSync() {
+        syncHold.current++
+        let released = false
+        return () => {
+          if (released) return
+          released = true
+          syncHold.current = Math.max(0, syncHold.current - 1)
+          if (syncHold.current === 0 && dirty.current && loadSyncConfig()) runSync()
+        }
       },
 
       addCategory(c) {

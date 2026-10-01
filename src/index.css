@@ -206,6 +206,20 @@ textarea {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* 按鈕的觸控行為比照原生 App（放在 base 層，個別元件要覆蓋時 utility 會贏）：
+ * - manipulation：連點不會觸發雙擊放大（數字鍵盤連按兩下同一個數字就會中）；
+ * - 長按不選字、不跳出 iOS 的放大鏡／分享選單——列表上的每一列都是按鈕，
+ *   長按想看清楚卻選到一段字很像網頁。輸入框不受影響。 */
+@layer base {
+  button,
+  [role='button'] {
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+}
+
 /* 底部安全區。
  *
  * ⚠️ 不要在同一個元素上同時寫 `pb-*` 和 `safe-b`：兩者都設 padding-bottom，

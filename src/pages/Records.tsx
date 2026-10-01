@@ -4,12 +4,14 @@ import { allowanceByWallet, summarize, txnsInPeriod } from '../lib/budget'
 import { addMonths, currentPeriod, formatDateLabel, formatMonthLabel } from '../lib/date'
 import { money } from '../lib/format'
 import { TxnRow } from '../components/TxnRow'
+import { useDeleteTxn } from '../lib/useDeleteTxn'
 import { IconChevronL, IconChevronR } from '../components/icons'
 import type { Txn } from '../lib/types'
 
 type Filter = 'all' | 'expense' | 'income'
 
 export function Records({ onEditTxn }: { onEditTxn: (id: string) => void }) {
+  const removeTxn = useDeleteTxn()
   const { data } = useStore()
   const sym = data.settings.currencySymbol
   const [month, setMonth] = useState(() => currentPeriod(data.settings.monthStartDay))
@@ -190,7 +192,13 @@ export function Records({ onEditTxn }: { onEditTxn: (id: string) => void }) {
                 </span>
               </div>
               {items.map((t) => (
-                <TxnRow key={t.id} txn={t} data={data} onClick={() => onEditTxn(t.id)} />
+                <TxnRow
+                  key={t.id}
+                  txn={t}
+                  data={data}
+                  onClick={() => onEditTxn(t.id)}
+                  onDelete={() => removeTxn(t.id)}
+                />
               ))}
             </div>
           )

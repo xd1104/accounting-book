@@ -5,11 +5,13 @@ import { currentPeriod, formatHomeDate, today } from '../lib/date'
 import { money } from '../lib/format'
 import { Ring, budgetColor } from '../components/Ring'
 import { TxnRow } from '../components/TxnRow'
+import { useDeleteTxn } from '../lib/useDeleteTxn'
 import { IconChevronR, IconWallet } from '../components/icons'
 import { push } from '../router'
 import { BackupChip, BackupPanel } from '../components/BackupBanner'
 
 export function Home({ onEditTxn }: { onEditTxn: (id: string) => void }) {
+  const removeTxn = useDeleteTxn()
   const { data } = useStore()
   const sym = data.settings.currencySymbol
   const month = currentPeriod(data.settings.monthStartDay)
@@ -225,7 +227,13 @@ export function Home({ onEditTxn }: { onEditTxn: (id: string) => void }) {
         ) : (
           <div>
             {todayTxns.map((x) => (
-              <TxnRow key={x.id} txn={x} data={data} onClick={() => onEditTxn(x.id)} />
+              <TxnRow
+                  key={x.id}
+                  txn={x}
+                  data={data}
+                  onClick={() => onEditTxn(x.id)}
+                  onDelete={() => removeTxn(x.id)}
+                />
             ))}
           </div>
         )}

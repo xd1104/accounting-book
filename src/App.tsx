@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useStore } from './store'
 import { recordNav } from './lib/persist'
 import { pinAfterRouteChange, watchNavPin } from './lib/navPin'
@@ -15,6 +15,8 @@ import { Wallets } from './pages/Wallets'
 import { Sync } from './pages/Sync'
 import { TxnSheet } from './components/TxnSheet'
 import { UpdateBanner } from './components/UpdateBanner'
+import { UndoToast } from './components/UndoToast'
+import { watchEdgeBack } from './lib/edgeBack'
 import { IconBack, IconChart, IconGear, IconHome, IconList, IconPlus } from './components/icons'
 
 const TABS = [
@@ -62,10 +64,23 @@ export function App() {
   useEffect(watchShellHeight, [])
   useEffect(watchNavPin, [])
 
+  // 從左緣往右滑返回（只在子頁面、沒有開著底部視窗時）。手勢開始時才讀最新的頁面狀態。
+  const shellRef = useRef<HTMLDivElement>(null)
+  const canEdgeBack = useRef(false)
+  canEdgeBack.current = !!subTitle && !sheetOpen
+  useEffect(() => {
+    if (!ready || !shellRef.current) return
+    return watchEdgeBack(
+      shellRef.current,
+      () => canEdgeBack.current && !document.querySelector('[data-sheet]'),
+      back,
+    )
+  }, [ready])
+
   if (!ready) return <div className="h-full bg-bg" />
 
   return (
-    <div className="app-shell bg-bg">
+    <div ref={shellRef} className="app-shell bg-bg">
       {ownsHeader ? (
         // ⚠️ safe-t 不准刪 —— 它負責瀏海的頂部安全區
         <div className="sticky top-0 z-30 safe-t bg-bg/85 backdrop-blur-xl" />
@@ -131,6 +146,7 @@ export function App() {
       )}
 
       <TxnSheet open={sheetOpen} onClose={back} editId={editId || null} />
+      <UndoToast aboveNav={isTab && !sheetOpen} />
     </div>
   )
 }
@@ -148,7 +164,8 @@ function TabButton({
 }) {
   return (
     <button
-      onClick={() => push(path)}
+      // 再點一次目前的分頁＝捲回最上面（iOS 的分頁列都是這樣）
+      onClick={() => (active ? window.scrollTo({ top: 0, behavior: 'smooth' }) : push(path))}
       className={`h-full flex flex-col items-center justify-center gap-0.5 transition ${
         active ? 'text-brand' : 'text-muted'
       }`}

@@ -74,6 +74,7 @@ export function PhotoViewer({ id, onClose }: { id: string | null; onClose: () =>
   if (!id) return null
   return (
     <div
+      data-sheet
       className="fixed inset-0 z-[60] bg-black/92 grid place-items-center animate-fade-in"
       onClick={onClose}
     >
