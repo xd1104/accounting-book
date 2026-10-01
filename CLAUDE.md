@@ -109,6 +109,12 @@ npm run typecheck  # 型別檢查，改完該跑
   **首屏沒變快**、第一次點統計分頁反而 307→428ms。這個 App 的 bundle 57% 是 react-dom。
 
 ### 版面
+- ⚠️ **能上線的只有主分支 `claude/new-accounting-app-uyf7x8`**（這個 repo 沒有 `main`，
+  它就是預設分支，App 同步記帳也寫在這裡）。`deploy.yml` 雖然寫了 `claude/**` 都會跑，
+  但 2026-09-30 從工作分支推上去時 build 成功、**deploy job 2 秒就失敗而且沒有 log**
+  —— 研判是 `github-pages` environment 的分支保護只放行主分支（沒有 log 可證實）。
+  **推到工作分支 ≠ Benson 手機上看得到**；要他試用就要（經他同意）併進主分支。
+  主分支常常多出 `2026-10（0 筆）` 這類同步 commit，併之前先 fetch、rebase 到最新再推。
 - **版本號由 build 時的 commit 產生**，同時寫進 JS 與 `sw.js` 的 cache 名稱。
   手動維護版本號忘了改 → 瀏覽器看不出 service worker 有變 → 手機永遠停在舊版，無症狀。
 - **分配項目的金額欄是無邊框的**，只有 focus 才有底色。12 列都畫成輸入框會很吵。
