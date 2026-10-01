@@ -26,15 +26,17 @@ export function UndoToast({ aboveNav }: { aboveNav: boolean }) {
           : 'calc(1rem + env(safe-area-inset-bottom, 0px))',
       }}
     >
+      {/* data-no-swallow：列滑開時點「復原」也要按得到（見 SwipeRow 的 onOutside） */}
       <div
         key={entry.id}
         role="status"
+        data-no-swallow
         className="pointer-events-auto mx-auto max-w-md flex items-center gap-2 pl-4 pr-1.5 py-1.5 rounded-2xl bg-ink text-surface shadow-lg animate-pop-in"
       >
         <span className="flex-1 min-w-0 truncate text-sm">{entry.label}</span>
         <button
           onClick={runUndo}
-          className="h-10 px-4 shrink-0 rounded-xl text-sm font-bold text-brand-soft active:opacity-60"
+          className="h-11 px-4 shrink-0 rounded-xl text-sm font-bold text-brand-soft active:opacity-60"
         >
           復原
         </button>

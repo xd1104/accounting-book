@@ -1,5 +1,5 @@
 import type { AppData } from './types'
-import { getPhoto, putPhoto } from './photos'
+import { getPhoto, isPhotoHeld, putPhoto } from './photos'
 import type { GitHubConfig } from './github'
 import { blobToBase64, deleteFile, encodeText, getBlob, getFile, listFolder, putFile } from './github'
 import {
@@ -369,6 +369,9 @@ export async function syncPhotos(
   for (const [name, sha] of remoteShas) {
     const id = name.replace(/\.jpg$/, '')
     if (referenced.has(id)) continue
+    // 復原期間保留的照片（刪了記錄、還能按復原）：帳本裡暫時沒人引用，但不是孤兒。
+    // 在這裡即時問、不在開頭拍快照——保留可能在這個迴圈途中才開始（見 photos.ts 的 holdPhotos）。
+    if (isPhotoHeld(id)) continue
     // No sha, no delete: the API needs it to know what it is removing, and
     // guessing is not an option when the call is destructive.
     if (!sha) continue

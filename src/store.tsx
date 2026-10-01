@@ -4,7 +4,7 @@ import type { Account, Allocation, AppData, Category, MonthPlan, Settings, Txn, 
 import { LocalStorageAdapter } from './lib/storage'
 import type { StorageAdapter } from './lib/storage'
 import { emptyData, uid } from './lib/defaults'
-import { deletePhotos, pruneOrphans } from './lib/photos'
+import { deletePhotos, holdPhotos, pruneOrphans } from './lib/photos'
 import type { SyncConfig } from './lib/sync'
 import { loadSyncConfig, resolveConflict, saveSyncConfig, syncOnce, syncPhotos } from './lib/sync'
 
@@ -29,8 +29,12 @@ interface Store {
   /**
    * 復原期間先別同步：同步完會清掉「沒有記錄引用的照片」（本機與雲端都會），
    * 復原回來的記錄就少了照片。回傳的函式放開這個保留，放開後若有改動就補同步一次。
+   *
+   * `photos`：被刪記錄的照片。只擋新的同步不夠——**已經在跑**的那次回來後讀到的是刪除後的
+   * 帳本，會把它們當孤兒刪掉。所以這些照片另外保留（photos.ts 的 holdPhotos，清理時即時查），
+   * 一直保留到放開之後、而且當下在跑的同步也結束了才放：那次同步可能拿著放開前的帳本。
    */
-  holdSync: () => () => void
+  holdSync: (photos?: string[]) => () => void
 
   addCategory: (c: Omit<Category, 'id' | 'order'>) => void
   updateCategory: (id: string, patch: Partial<Category>) => void
@@ -171,6 +175,8 @@ export function StoreProvider({
   const syncing = useRef(false)
   /** holdSync() 的計數，>0 時 runSync 直接跳過。 */
   const syncHold = useRef(0)
+  /** 等「當下在跑的這次同步」結束才做的事（放開照片保留，見 holdSync）。 */
+  const afterSync = useRef<Array<() => void>>([])
   /** Mirrors sync.status for the async callbacks, which cannot read state directly. */
   const syncStatus = useRef(sync.status)
   syncStatus.current = sync.status
@@ -201,7 +207,8 @@ export function StoreProvider({
       const photos = await syncPhotos(cfg, synced)
       // A deletion made on another device arrives as a record disappearing; the
       // photo it referenced is then dead weight in this device's storage too.
-      pruneOrphans(new Set(synced.txns.flatMap((t) => t.photos ?? []))).catch(() => {})
+      // 要 await：finally 會放開復原期間的照片保留，清理還在跑就放開等於沒保留。
+      await pruneOrphans(new Set(synced.txns.flatMap((t) => t.photos ?? []))).catch(() => {})
 
       const saved = loadSyncConfig()
       const parts = [
@@ -222,6 +229,9 @@ export function StoreProvider({
       setSync((s) => ({ ...s, status: 'error', error: (e as Error).message || '同步失敗' }))
     } finally {
       syncing.current = false
+      const after = afterSync.current
+      afterSync.current = []
+      after.forEach((f) => f())
     }
   }, [adopt])
 
@@ -309,14 +319,22 @@ export function StoreProvider({
           return { ...d, plans: { ...d.plans, [month]: { ...p, allocations } } }
         })
       },
-      holdSync() {
+      holdSync(photos = []) {
         syncHold.current++
+        const unpin = photos.length ? holdPhotos(photos) : null
         let released = false
         return () => {
           if (released) return
           released = true
           syncHold.current = Math.max(0, syncHold.current - 1)
-          if (syncHold.current === 0 && dirty.current && loadSyncConfig()) runSync()
+          // 照片保留：有同步在跑就等它跑完再放（它可能拿著刪除後、復原前的帳本）。
+          if (unpin) {
+            if (syncing.current) afterSync.current.push(unpin)
+            else unpin()
+          }
+          // 補同步延到下一輪：按「復原」時 restoreTxn 的新資料要等這次事件處理完才渲染，
+          // 當下的 dataRef 還是刪除後的帳本，拿它去同步會先推一份少一筆的上去。
+          if (syncHold.current === 0 && dirty.current && loadSyncConfig()) setTimeout(runSync, 0)
         }
       },
 

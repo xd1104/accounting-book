@@ -180,6 +180,10 @@ export function SwipeRow({
     const onOutside = (e: Event) => {
       if (!open || root.contains(e.target as Node)) return
       setOpen(false)
+      // 底部的「復原」提示、分頁列：使用者點的就是它們，只收回、不吞那一下。
+      // 吞噬只是為了清單裡「點隔壁列只收回、不順便打勾」。
+      const el = e.target instanceof Element ? e.target : (e.target as Node | null)?.parentElement
+      if (el?.closest('[data-no-swallow]')) return
       // iOS：滑開時點別處只會收回，那一下不會同時按到別的東西（例如隔壁那列的打勾）。
       const swallow = (ev: MouseEvent) => {
         ev.stopPropagation()

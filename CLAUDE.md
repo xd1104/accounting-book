@@ -213,19 +213,34 @@ npm run typecheck  # 型別檢查，改完該跑
   - ⚠️ **這個 bug 在 Chromium 重現不出來**：把 preventDefault 拿掉，Chromium 的觸控模擬照樣不捲
     （實測過，有修沒修都綠）。`ios.mjs` 那條「橫滑時頁面不捲」**驗不到這個 bug**，只能靠真機。
   - 拖曳中直接改 DOM 的 transform，不經過 React 重繪；拖過之後那下 click 在 capture 階段吞掉。
+  - 「滑開時點別處吞掉那一下」**只對清單有效**：底部「復原」提示與分頁列標了 `data-no-swallow`，
+    點它們只收回、照常按得到（使用者點的就是它們）。之後新增浮在清單上的操作也要標。
 - ⭐ **刪除不再先跳 `confirm()`，改成直接刪＋底部 5 秒「復原」**（`lib/undo.ts` + `UndoToast`，
   掛在 App 一次，有分頁列時浮在分頁列上面）。記帳視窗的刪除鈕也是這套。
   - ⚠️ **記錄的照片等復原期過了才刪**（`deleteTxn(id, { keepPhotos: true })` + commit 時刪），
     **而且復原期間 `holdSync()` 擋住同步**：同步完會 `pruneOrphans` 清掉沒被引用的照片
     （雲端也會刪），不擋的話按了復原、記錄回來、照片沒了。別拿掉這個 hold。
+  - ⭐ **hold 只擋「新開始」的同步，擋不住已經在跑的那次**（2026-10-01 QA 退件：它回來後拿刪除後的
+    帳本跑 `syncPhotos`/`pruneOrphans`，照片本機雲端都刪了）。所以被刪記錄的照片另外**保留**
+    （`holdSync(txn.photos)` → `photos.ts` 的 `holdPhotos`），清照片的兩個地方
+    （`pruneOrphans`、`syncPhotos` 刪雲端那段）都在**每張動手前那一刻**查 `isPhotoHeld`，
+    不是開頭拍快照。放開保留要**等當下在跑的同步結束**（`afterSync`），而 runSync 的
+    `pruneOrphans` 因此要 `await`——不然 finally 放開時清理還在跑。之後新增任何「沒被引用就刪照片」
+    的地方，都要一起查 `isPhotoHeld`。`dev/photo_inflight.mjs` 的 D1/D2 擋著（突變驗證過）。
+  - hold 放開後的補同步延到下一輪（`setTimeout(runSync, 0)`）：按「復原」的當下 restoreTxn 還沒渲染，
+    `dataRef` 仍是刪除後的帳本。
   - 分配項目的復原走 `store.restoreAllocation(month, …)`（用 mutate 讀最新資料），
     **不要用頁面上的 `base()`**——按復原時可能已經換了月份。
   - 分類刪除、清除資料、中斷同步這種重的還是 `confirm()`，沒有改。
 - **底部視窗可以往下拉關閉**（`Sheet.tsx`）：拉標題列隨時可以；拉內容只在內容捲到頂時才算。
   ⚠️ **記帳視窗（`dismissFromBody={false}`）與全螢幕的選擇器只認標題列**——表單填到一半、
   或整片都是可點的格子，手指一滑就整個關掉太危險。拉超過 28% 或往下甩就關。
+  ⭐ **每個 Sheet 只處理「最近的 `[data-sheet]` 是自己」的觸控。** 視窗會疊（編輯項目→選擇圖示），
+  子視窗 DOM 就在外層 body 裡，觸控會冒泡上去；外層若接手，拉子視窗標題列會兩層一起關
+  （外層沒存的修改丟了）、在子視窗格子上往回捲變成拉外層。
 - **子頁面從左緣往右滑返回**（`lib/edgeBack.ts`），**只在主畫面 App（standalone）**：
   Safari 分頁本身就有這個手勢，再做一個會打架。有底部視窗開著（`[data-sheet]`）時不啟用。
+  不是 standalone 就**根本不掛監聽器**（document 上非 passive 的 touchmove 會讓全 App 捲動都先等 JS）。
   放手返回後等 `hashchange` 再把外殼歸位，不然舊頁面會閃一下。
 - **再點一次目前的分頁＝捲回最上面。**
 - **按鈕 `touch-action: manipulation`、長按不選字、不跳 iOS 選單**（`index.css` 的 `@layer base`；

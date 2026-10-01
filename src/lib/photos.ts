@@ -52,12 +52,47 @@ export async function allPhotoIds(): Promise<string[]> {
   return keys.map(String)
 }
 
-/** Remove photos no transaction references any more. */
+/**
+ * 復原期間保留的照片（id → 保留次數）。
+ *
+ * 刪一筆有照片的記錄後有 5 秒可以復原；這段期間帳本裡已經沒有記錄引用那張照片，
+ * 任何「沒被引用就刪」的清理都會把它當孤兒——按了復原，記錄回來、照片沒了。
+ * holdSync() 只擋得住「新開始」的同步，擋不住已經在跑的那次（它回來後讀到的是刪除後的帳本），
+ * 所以清理照片的每個地方（`pruneOrphans`、`syncPhotos` 刪雲端那段）都要在**動手前那一刻**
+ * 問這裡，不是開始時拍一次快照：保留可能在清理途中才開始。
+ */
+const held = new Map<string, number>()
+
+/** 保留這些照片不被當孤兒清掉；回傳的函式放開（重複呼叫無害）。 */
+export function holdPhotos(ids: string[]): () => void {
+  for (const id of ids) held.set(id, (held.get(id) ?? 0) + 1)
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    for (const id of ids) {
+      const n = (held.get(id) ?? 0) - 1
+      if (n > 0) held.set(id, n)
+      else held.delete(id)
+    }
+  }
+}
+
+export function isPhotoHeld(id: string): boolean {
+  return held.has(id)
+}
+
+/** Remove photos no transaction references any more (and nobody is holding — see holdPhotos). */
 export async function pruneOrphans(referenced: Set<string>): Promise<number> {
   const ids = await allPhotoIds()
-  const orphans = ids.filter((id) => !referenced.has(id))
-  await deletePhotos(orphans)
-  return orphans.length
+  let n = 0
+  for (const id of ids) {
+    // 每張刪之前才問：前一張刪完的這段時間裡，可能剛好有人開始保留它。
+    if (referenced.has(id) || isPhotoHeld(id)) continue
+    await deletePhotos([id])
+    n++
+  }
+  return n
 }
 
 /**

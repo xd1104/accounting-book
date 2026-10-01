@@ -12,6 +12,10 @@ const FLICK_V = 0.45
  * 只在主畫面 App（standalone）啟用：Safari 分頁本身就有這個手勢，再做一個會兩邊打架。
  * standalone 沒有瀏覽器外框，原本這個手勢完全沒反應——Benson 習慣性地滑了也不會動。
  * `enabled()` 每次手勢開始時才問（子頁面、而且沒有開著任何底部視窗才算）。
+ *
+ * 不是 standalone 就**根本不掛監聽器**：document 上非 passive 的 touchmove 會讓整個 App
+ * 的每一次觸控捲動都要先等 JS 回覆才能動，一般分頁用不到這個手勢，不該付這個代價。
+ * 掛載時判斷一次就好（standalone 在頁面生命週期內不會變）。
  * 頁面在拖曳時整個跟著手指走；放手後若要返回，先滑出去，等 hashchange 換好頁再歸位。
  */
 export function watchEdgeBack(
@@ -19,6 +23,7 @@ export function watchEdgeBack(
   enabled: () => boolean,
   goBack: () => void,
 ): () => void {
+  if (!isStandalone()) return () => {}
   let g: { sx: number; sy: number; lock: boolean | null; lastX: number; lastT: number; v: number; dx: number } | null =
     null
 
@@ -35,7 +40,7 @@ export function watchEdgeBack(
 
   const onStart = (e: TouchEvent) => {
     g = null
-    if (e.touches.length > 1 || !isStandalone()) return
+    if (e.touches.length > 1) return
     const t = e.touches[0]
     if (t.clientX > EDGE || !enabled()) return
     g = { sx: t.clientX, sy: t.clientY, lock: null, lastX: t.clientX, lastT: e.timeStamp, v: 0, dx: 0 }

@@ -24,6 +24,7 @@ const DISMISS_RATIO = 0.28
 const FLICK_V = 0.5
 
 export function Sheet({ open, onClose, title, children, full, footer, dismissFromBody }: Props) {
+  const rootRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const backdropRef = useRef<HTMLDivElement>(null)
   const headerRef = useRef<HTMLDivElement>(null)
@@ -51,14 +52,21 @@ export function Sheet({ open, onClose, title, children, full, footer, dismissFro
    *   後者表單填到一半手指一滑就整筆不見，太危險。
    * 用原生 touch 事件、touchmove 非 passive：確定是往下拉關閉後要 preventDefault，
    * 不然 iOS 會同時做內容的彈性捲動，面板跟著抖（同 SwipeRow 的理由）。
+   *
+   * ⚠️ 視窗會疊（編輯項目 → 選擇圖示），而子視窗的 DOM 就渲染在外層面板的 body 裡，
+   * 觸控事件會一路冒泡到外層。外層若照單全收，看到的是「自己 body 的 scrollTop=0、
+   * 手指在 body 裡」，就會接手並 preventDefault：拉子視窗標題列時兩層一起關（外層沒存的
+   * 修改跟著丟），在子視窗格子上往回捲時格子不動、反而是外層被拉下來。
+   * 所以只處理「最近的 [data-sheet] 是自己」的觸控——疊在上面的視窗自己管自己。
    */
   useEffect(() => {
     if (!open) return
+    const root = rootRef.current
     const panel = panelRef.current
     const backdrop = backdropRef.current
     const header = headerRef.current
     const body = bodyRef.current
-    if (!panel || !backdrop || !header || !body) return
+    if (!root || !panel || !backdrop || !header || !body) return
 
     let g: {
       sy: number
@@ -80,9 +88,13 @@ export function Sheet({ open, onClose, title, children, full, footer, dismissFro
     }
 
     const onStart = (e: TouchEvent) => {
+      g = null
       if (e.touches.length > 1) return
-      const t = e.touches[0]
       const target = e.target as Node
+      const el = target instanceof Element ? target : target.parentElement
+      // 落在疊在上面的子視窗裡：不是我的手勢（見上面 ⚠️）
+      if (el?.closest('[data-sheet]') !== root) return
+      const t = e.touches[0]
       const inHeader = header.contains(target)
       const inBody = body.contains(target)
       const ok = inHeader || (fromBody && inBody && body.scrollTop <= 0)
@@ -143,7 +155,7 @@ export function Sheet({ open, onClose, title, children, full, footer, dismissFro
   if (!open) return null
 
   return (
-    <div data-sheet className="fixed inset-0 z-50 flex flex-col justify-end">
+    <div ref={rootRef} data-sheet className="fixed inset-0 z-50 flex flex-col justify-end">
       <div
         ref={backdropRef}
         className="absolute inset-0 bg-black/45 animate-fade-in"
