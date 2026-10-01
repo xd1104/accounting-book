@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { Account, Allocation, AppData, Category, MonthPlan, Settings, Txn, Wallet } from './lib/types'
+import type { Account, Allocation, AllocationSplit, AppData, Category, MonthPlan, Settings, Txn, Wallet } from './lib/types'
 import { LocalStorageAdapter } from './lib/storage'
 import type { StorageAdapter } from './lib/storage'
 import { emptyData, uid } from './lib/defaults'
@@ -26,6 +26,8 @@ interface Store {
   savePlan: (plan: MonthPlan) => void
   /** 把剛刪掉的分配項目放回那個月份的原位置。用 mutate 讀最新資料，不怕閉包過期。 */
   restoreAllocation: (month: string, alloc: Allocation, index: number) => void
+  /** 把剛移除的「零用錢放在哪」那一格放回原位（金額照舊，總額跟著加回去）。 */
+  restoreSplit: (month: string, accountId: string, split: AllocationSplit, index: number) => void
   /**
    * 復原期間先別同步：同步完會清掉「沒有記錄引用的照片」（本機與雲端都會），
    * 復原回來的記錄就少了照片。回傳的函式放開這個保留，放開後若有改動就補同步一次。
@@ -317,6 +319,27 @@ export function StoreProvider({
           const allocations = [...p.allocations]
           allocations.splice(Math.min(index, allocations.length), 0, alloc)
           return { ...d, plans: { ...d.plans, [month]: { ...p, allocations } } }
+        })
+      },
+      restoreSplit(month, accountId, split, index) {
+        mutate((d) => {
+          const p = d.plans[month]
+          if (!p) return d
+          return {
+            ...d,
+            plans: {
+              ...d.plans,
+              [month]: {
+                ...p,
+                allocations: p.allocations.map((a) => {
+                  if (a.accountId !== accountId || a.splits?.some((s) => s.walletId === split.walletId)) return a
+                  const splits = [...(a.splits ?? [])]
+                  splits.splice(Math.min(index, splits.length), 0, split)
+                  return { ...a, splits, amount: splits.reduce((n, s) => n + s.amount, 0) }
+                }),
+              },
+            },
+          }
         })
       },
       holdSync(photos = []) {

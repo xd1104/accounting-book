@@ -6,7 +6,7 @@ import { money } from '../lib/format'
 import { KIND_LABEL, WALLET_KIND_LABEL } from '../lib/defaults'
 import type { Account, Allocation, AllocationSplit, MonthPlan } from '../lib/types'
 import { allocationByWallet, allowanceByWallet } from '../lib/budget'
-import { IconCheck, IconChevronL, IconChevronR, IconPlus, IconTrash } from '../components/icons'
+import { IconCheck, IconChevronL, IconChevronR, IconPlus, IconTrash, IconX } from '../components/icons'
 import { Sheet } from '../components/Sheet'
 import { Toggle } from '../components/Toggle'
 import { AccountEditor } from '../components/AccountEditor'
@@ -37,7 +37,7 @@ interface ListGroup {
 }
 
 export function Plan() {
-  const { data, savePlan, restoreAllocation, addAccount, updateAccount, addWallet, updateSettings } =
+  const { data, savePlan, restoreAllocation, restoreSplit, addAccount, updateAccount, addWallet, updateSettings } =
     useStore()
   const sym = data.settings.currencySymbol
   const [month, setMonth] = useState(() => currentPeriod(data.settings.monthStartDay))
@@ -128,6 +128,11 @@ export function Plan() {
   const allowanceAlloc = plan?.allocations.find((a) => a.accountId === plan.allowanceAccountId)
   /** Wallets the user added to the split by hand this session. */
   const [shownSplits, setShownSplits] = useState<string[]>([])
+  /**
+   * 這次明確按過「移除」的存放處。只為了一種情況：那裡還有結轉或花費（照理會當成
+   * 「有錢的地方」列出來），使用者剛按了移除卻還留著一列 0，看起來就像沒移除成功。
+   */
+  const [removedSplits, setRemovedSplits] = useState<string[]>([])
   const walletRows = useMemo(() => allowanceByWallet(data, month), [data, month])
   /**
    * The same plan, totalled by destination — the list to work from on transfer
@@ -154,9 +159,11 @@ export function Plan() {
       map.set(walletId, [...(map.get(walletId) ?? []), row])
     for (const a of plan?.allocations ?? []) {
       const account = data.accounts.find((x) => x.id === a.accountId) ?? null
-      const parts = a.splits?.filter((sp) => sp.amount) ?? []
-      if (parts.length) {
-        for (const sp of parts) push(sp.walletId, { alloc: a, account, amount: sp.amount, split: true })
+      // 有拆分就照拆分列，**金額 0 的那格也列**（歸零不等於移除，見 setSplit）。
+      // 不能退回「整筆一列」：那一列的金額欄可以改，改的是 amount、拆分卻還是 0，
+      // 每日額度（照拆分算）就會跟畫面上的數字對不起來。
+      if (a.splits?.length) {
+        for (const sp of a.splits) push(sp.walletId, { alloc: a, account, amount: sp.amount, split: true })
       } else {
         push(account?.walletId ?? null, { alloc: a, account, amount: a.amount, split: false })
       }
@@ -198,6 +205,7 @@ export function Plan() {
    */
   const splitRows = useMemo(() => {
     if (!plan?.allowanceAccountId || !allowanceAlloc) return []
+    const listed = new Set(allowanceAlloc.splits?.map((s) => s.walletId) ?? [])
     const home = accounts.find((a) => a.id === plan.allowanceAccountId)?.walletId ?? null
     return wallets
       .map((w) => {
@@ -208,11 +216,13 @@ export function Plan() {
       })
       .filter(
         (r) =>
+          // 在拆分裡的一律列出——就算填成 0 也留著，要拿掉得明確按「移除」
+          listed.has(r.wallet.id) ||
           r.amount !== 0 ||
           shownSplits.includes(r.wallet.id) ||
-          (r.row && (r.row.carriedIn !== 0 || r.row.spent > 0)),
+          (!removedSplits.includes(r.wallet.id) && r.row && (r.row.carriedIn !== 0 || r.row.spent > 0)),
       )
-  }, [plan, allowanceAlloc, accounts, wallets, walletRows, shownSplits])
+  }, [plan, allowanceAlloc, accounts, wallets, walletRows, shownSplits, removedSplits])
 
   const restWallets = useMemo(
     () => wallets.filter((w) => !splitRows.some((r) => r.wallet.id === w.id)),
@@ -233,12 +243,48 @@ export function Plan() {
         const next = existing.some((s) => s.walletId === walletId)
           ? existing.map((s) => (s.walletId === walletId ? { ...s, amount } : s))
           : [...existing, { walletId, amount }]
-        const cleaned = next.filter((s) => s.amount !== 0)
-        const total = cleaned.reduce((n, s) => n + s.amount, 0)
+        // ⚠️ 填成 0 **不會**拿掉那一格（Benson 2026-10-01：歸零不要直接移除，刪除另外做）。
+        // 以前會把 0 濾掉：打字中把數字刪光，那一列就整個消失；兩格都歸零時還會退回
+        // 「沒有拆分」，整筆零用錢又跑回原本的戶頭。拿掉一格請走 removeSplit。
+        const total = next.reduce((n, s) => n + s.amount, 0)
         // The split is the source of truth once used, so keep the headline in step.
-        return { ...a, splits: cleaned.length ? cleaned : undefined, amount: cleaned.length ? total : a.amount }
+        return { ...a, splits: next, amount: total }
       }),
     })
+  }
+
+  /** 明確移除「零用錢放在哪」的一格；金額不是 0 的給 5 秒復原。 */
+  const removeSplit = (walletId: string) => {
+    const b = base()
+    const id = b.allowanceAccountId
+    if (!id) return
+    const a = b.allocations.find((x) => x.accountId === id)
+    // 還沒拆分時畫面上那一格是「整筆放在原本的戶頭」推出來的，先把它變成真的一格再拿掉
+    const existing: AllocationSplit[] =
+      a?.splits ?? (a && a.amount > 0 ? [{ walletId: homeWalletOf(id), amount: a.amount }] : [])
+    const index = existing.findIndex((s) => s.walletId === walletId)
+    setShownSplits((v) => v.filter((x) => x !== walletId))
+    setRemovedSplits((v) => (v.includes(walletId) ? v : [...v, walletId]))
+    if (index < 0) return // 只是使用者剛加出來、還沒填過的空列
+    const removed = existing[index]
+    const next = existing.filter((s) => s.walletId !== walletId)
+    savePlan({
+      ...b,
+      allocations: b.allocations.map((x) =>
+        x.accountId === id
+          ? { ...x, splits: next.length ? next : undefined, amount: next.reduce((n, s) => n + s.amount, 0) }
+          : x,
+      ),
+    })
+    if (removed.amount !== 0) {
+      showUndo({
+        label: `已移除「${wallets.find((w) => w.id === walletId)?.name ?? '存放處'}」${money(removed.amount, sym)}`,
+        undo: () => {
+          setRemovedSplits((v) => v.filter((x) => x !== walletId))
+          restoreSplit(b.month, id, removed, index)
+        },
+      })
+    }
   }
 
   const clearSplits = () => {
@@ -626,46 +672,58 @@ export function Plan() {
                 {/* One row per wallet: the amount to put there, and what is left of it. */}
                 <div className="space-y-2.5">
                   {splitRows.map(({ wallet: w, amount, row }) => (
-                    <div key={w.id} className="flex items-center gap-2">
-                      <span
-                        className="w-8 h-8 shrink-0 grid place-items-center rounded-xl text-base"
-                        style={{ background: `${w.color}1f` }}
-                      >
-                        {w.emoji}
-                      </span>
-                      <span className="flex-1 min-w-0">
-                        <span className="block text-sm truncate">{w.name}</span>
-                        <span className="block text-[10px] text-faint truncate">
-                          {row && (row.allocated > 0 || row.income > 0 || row.carriedIn !== 0) ? (
-                            <>
-                              還剩{' '}
-                              <b className={row.left < 0 ? 'text-bad' : 'text-ok-ink'}>
-                                {money(row.left, sym)}
-                              </b>
-                              {row.carriedIn !== 0 ? (
-                                <span className={row.carriedIn > 0 ? 'text-ok-ink' : 'text-bad'}>
-                                  {' · 結轉 '}
-                                  {row.carriedIn > 0 ? '+' : ''}
-                                  {money(row.carriedIn, sym)}
-                                </span>
-                              ) : (
-                                row.spent > 0 && ` · 已花 ${money(row.spent, sym)}`
-                              )}
-                            </>
-                          ) : (
-                            WALLET_KIND_LABEL[w.kind]
-                          )}
+                    <SwipeRow key={w.id} onDelete={() => removeSplit(w.id)} label="移除" className="rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="w-8 h-8 shrink-0 grid place-items-center rounded-xl text-base"
+                          style={{ background: `${w.color}1f` }}
+                        >
+                          {w.emoji}
                         </span>
-                      </span>
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        value={amount || ''}
-                        placeholder="0"
-                        onChange={(e) => setSplit(w.id, Number(e.target.value) || 0)}
-                        className="w-[88px] h-11 px-2 shrink-0 text-right rounded-lg bg-surface2 tnum text-sm font-semibold outline-none"
-                      />
-                    </div>
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-sm truncate">{w.name}</span>
+                          <span className="block text-[10px] text-faint truncate">
+                            {row && (row.allocated > 0 || row.income > 0 || row.carriedIn !== 0) ? (
+                              <>
+                                還剩{' '}
+                                <b className={row.left < 0 ? 'text-bad' : 'text-ok-ink'}>
+                                  {money(row.left, sym)}
+                                </b>
+                                {row.carriedIn !== 0 ? (
+                                  <span className={row.carriedIn > 0 ? 'text-ok-ink' : 'text-bad'}>
+                                    {' · 結轉 '}
+                                    {row.carriedIn > 0 ? '+' : ''}
+                                    {money(row.carriedIn, sym)}
+                                  </span>
+                                ) : (
+                                  row.spent > 0 && ` · 已花 ${money(row.spent, sym)}`
+                                )}
+                              </>
+                            ) : (
+                              WALLET_KIND_LABEL[w.kind]
+                            )}
+                          </span>
+                        </span>
+                        {/* type=text 才有千分位（跟分配列、本月收入同一套）；清空＝0，不會移除這一格 */}
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          aria-label={`${w.name}零用錢`}
+                          value={amount ? amount.toLocaleString('en-US') : ''}
+                          placeholder="0"
+                          onChange={(e) => setSplit(w.id, Number(e.target.value.replace(/\D/g, '')) || 0)}
+                          className="w-[88px] h-11 px-2 shrink-0 text-right rounded-lg bg-surface2 tnum text-sm font-semibold outline-none"
+                        />
+                        {/* 刪除另外一顆（也可以往左滑）。歸零不會拿掉這一格。 */}
+                        <button
+                          onClick={() => removeSplit(w.id)}
+                          aria-label={`移除${w.name}`}
+                          className="w-9 h-11 -mr-1 shrink-0 grid place-items-center rounded-lg text-faint active:text-bad"
+                        >
+                          <IconX className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </SwipeRow>
                   ))}
                 </div>
 
@@ -676,7 +734,10 @@ export function Plan() {
                     {restWallets.map((w) => (
                       <button
                         key={w.id}
-                        onClick={() => setShownSplits((v) => [...v, w.id])}
+                        onClick={() => {
+                          setShownSplits((v) => [...v, w.id])
+                          setRemovedSplits((v) => v.filter((x) => x !== w.id))
+                        }}
                         className="h-8 px-3 rounded-full bg-surface2 text-xs text-muted active:scale-95 transition"
                       >
                         + {w.emoji} {w.name}
