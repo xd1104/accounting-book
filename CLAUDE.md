@@ -112,7 +112,8 @@ npm run typecheck  # 型別檢查，改完該跑
 - ⚠️ **能上線的只有主分支 `claude/new-accounting-app-uyf7x8`**（這個 repo 沒有 `main`，
   它就是預設分支，App 同步記帳也寫在這裡）。`deploy.yml` 雖然寫了 `claude/**` 都會跑，
   但 2026-09-30 從工作分支推上去時 build 成功、**deploy job 2 秒就失敗而且沒有 log**
-  —— 研判是 `github-pages` environment 的分支保護只放行主分支（沒有 log 可證實）。
+  —— 是 `github-pages` environment 只放行主分支。2026-10-01 證實：**同一個 commit**
+  推到主分支 deploy 成功、推到工作分支 deploy 失敗（工作分支那條紅的不用管）。
   **推到工作分支 ≠ Benson 手機上看得到**；要他試用就要（經他同意）併進主分支。
   主分支常常多出 `2026-10（0 筆）` 這類同步 commit，併之前先 fetch、rebase 到最新再推。
 - **版本號由 build 時的 commit 產生**，同時寫進 JS 與 `sw.js` 的 cache 名稱。
