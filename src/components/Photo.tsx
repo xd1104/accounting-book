@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getPhoto } from '../lib/photos'
 import { IconX } from './icons'
 import { lockScroll, unlockScroll } from '../lib/scrollLock'
+import { watchEscape } from '../lib/topSheet'
 
 /** Resolve a stored photo id to an object URL, revoking it on unmount. */
 export function usePhotoURL(id: string | null): string | null {
@@ -64,16 +65,25 @@ export function PhotoThumb({
 /** Full-screen viewer, tap anywhere to close. */
 export function PhotoViewer({ id, onClose }: { id: string | null; onClose: () => void }) {
   const url = usePhotoURL(id)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
 
   useEffect(() => {
     if (!id) return
     lockScroll()
-    return unlockScroll
+    // 開在記帳視窗上面：Escape 只關照片，不能連記帳視窗一起關（見 lib/topSheet.ts）
+    const stopEscape = watchEscape(() => rootRef.current, () => onCloseRef.current())
+    return () => {
+      stopEscape()
+      unlockScroll()
+    }
   }, [id])
 
   if (!id) return null
   return (
     <div
+      ref={rootRef}
       data-sheet
       className="fixed inset-0 z-[60] bg-black/92 grid place-items-center animate-fade-in"
       onClick={onClose}

@@ -238,6 +238,8 @@ npm run typecheck  # 型別檢查，改完該跑
   ⭐ **每個 Sheet 只處理「最近的 `[data-sheet]` 是自己」的觸控。** 視窗會疊（編輯項目→選擇圖示），
   子視窗 DOM 就在外層 body 裡，觸控會冒泡上去；外層若接手，拉子視窗標題列會兩層一起關
   （外層沒存的修改丟了）、在子視窗格子上往回捲變成拉外層。
+  **桌機的 Escape 同理：只有 DOM 順序最後一個 `[data-sheet]` 回應**（`lib/topSheet.ts` 的 `watchEscape`，
+  Sheet 與 PhotoViewer 共用）。照片檢視開在記帳視窗上時按 Escape 只關照片——以前是整個記帳視窗被關掉。
 - **子頁面從左緣往右滑返回**（`lib/edgeBack.ts`），**只在主畫面 App（standalone）**：
   Safari 分頁本身就有這個手勢，再做一個會打架。有底部視窗開著（`[data-sheet]`）時不啟用。
   不是 standalone 就**根本不掛監聽器**（document 上非 passive 的 touchmove 會讓全 App 捲動都先等 JS）。

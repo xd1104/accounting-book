@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { IconX } from './icons'
 import { lockScroll, unlockScroll } from '../lib/scrollLock'
+import { watchEscape } from '../lib/topSheet'
 
 interface Props {
   open: boolean
@@ -35,11 +36,11 @@ export function Sheet({ open, onClose, title, children, full, footer, dismissFro
 
   useEffect(() => {
     if (!open) return
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
-    document.addEventListener('keydown', onKey)
+    // 只有最上層回應 Escape（見 lib/topSheet.ts）
+    const stopEscape = watchEscape(() => rootRef.current, onClose)
     lockScroll()
     return () => {
-      document.removeEventListener('keydown', onKey)
+      stopEscape()
       unlockScroll()
     }
   }, [open, onClose])
