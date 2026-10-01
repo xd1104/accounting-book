@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store'
 import { emptyPlan, resolvePlan, summarize } from '../lib/budget'
 import { addMonths, currentPeriod, formatMonthLabel, periodRange } from '../lib/date'
@@ -69,10 +69,46 @@ export function Plan() {
     savePlan({ ...b, allocations })
   }
 
+  /** 剛刪掉的那一筆，給底下的「復原」用。滑一下就刪，手滑的代價要能收回來。 */
+  const [undo, setUndo] = useState<{ alloc: Allocation; index: number; name: string } | null>(null)
+  /** 目前滑開、露出「刪除」的是哪一列（一次只開一列）。畫面狀態，不存檔。 */
+  const [swiped, setSwiped] = useState<string | null>(null)
+
   const removeAllocation = (accountId: string) => {
     const b = base()
+    const index = b.allocations.findIndex((a) => a.accountId === accountId)
+    if (index < 0) return
     savePlan({ ...b, allocations: b.allocations.filter((a) => a.accountId !== accountId) })
+    setSwiped(null)
+    setUndo({
+      alloc: b.allocations[index],
+      index,
+      name: data.accounts.find((x) => x.id === accountId)?.name ?? '項目',
+    })
   }
+
+  /** 放回原本的位置，連打勾、拆分一起還原——不是重新加一個 0 元的項目。 */
+  const restoreAllocation = () => {
+    if (!undo) return
+    const b = base()
+    setUndo(null)
+    if (b.allocations.some((a) => a.accountId === undo.alloc.accountId)) return
+    const allocations = [...b.allocations]
+    allocations.splice(Math.min(undo.index, allocations.length), 0, undo.alloc)
+    savePlan({ ...b, allocations })
+  }
+
+  useEffect(() => {
+    if (!undo) return
+    const t = setTimeout(() => setUndo(null), 5000)
+    return () => clearTimeout(t)
+  }, [undo])
+
+  // 換月份時，上個月的「復原」與滑開的列都不該留著。
+  useEffect(() => {
+    setUndo(null)
+    setSwiped(null)
+  }, [month])
 
   /** Ticking a carried-over plan is also what writes it down for this month. */
   const toggleDone = (accountId: string) => {
@@ -378,7 +414,7 @@ export function Plan() {
             本月分配
             {totalCount > 0 && (
               <span className="ml-1.5 text-faint font-normal tnum">
-                {editing ? '點名稱可以改項目' : `${totalCount} 項 · 點一下打勾`}
+                {editing ? '點名稱可以改項目' : `${totalCount} 項 · 點一下打勾，往右滑刪除`}
               </span>
             )}
           </span>
@@ -435,6 +471,8 @@ export function Plan() {
                     sym={sym}
                     allowance={plan?.allowanceAccountId === row.alloc.accountId}
                     editing={editing}
+                    swiped={swiped === `${g.walletId}:${row.alloc.accountId}`}
+                    onSwipe={(open) => setSwiped(open ? `${g.walletId}:${row.alloc.accountId}` : null)}
                     onToggle={() => toggleDone(row.alloc.accountId)}
                     onOpen={() => row.account && setEditingAccount(row.account)}
                     onAmount={(v) => setAllocation(row.alloc.accountId, v)}
@@ -481,6 +519,8 @@ export function Plan() {
                       sym={sym}
                       allowance={plan?.allowanceAccountId === row.alloc.accountId}
                       editing={editing}
+                      swiped={swiped === `${g.walletId}:${row.alloc.accountId}`}
+                      onSwipe={(open) => setSwiped(open ? `${g.walletId}:${row.alloc.accountId}` : null)}
                       onToggle={() => toggleDone(row.alloc.accountId)}
                       onOpen={() => row.account && setEditingAccount(row.account)}
                       onAmount={(v) => setAllocation(row.alloc.accountId, v)}
@@ -718,6 +758,27 @@ export function Plan() {
         </div>
       </Sheet>
 
+      {/* 刪除後 5 秒內可以復原。分配頁沒有分頁列，貼底就好（留安全區）。 */}
+      {undo && (
+        <div
+          className="fixed inset-x-0 z-40 px-4 pointer-events-none"
+          style={{ bottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
+        >
+          <div
+            role="status"
+            className="pointer-events-auto mx-auto max-w-md flex items-center gap-2 pl-4 pr-1.5 py-1.5 rounded-2xl bg-ink text-surface shadow-lg"
+          >
+            <span className="flex-1 min-w-0 truncate text-sm">已刪除「{undo.name}」</span>
+            <button
+              onClick={restoreAllocation}
+              className="h-10 px-4 shrink-0 rounded-xl text-sm font-bold text-brand-soft active:opacity-60"
+            >
+              復原
+            </button>
+          </div>
+        </div>
+      )}
+
       <AccountEditor
         target={editingAccount}
         seed={data.accounts.length}
@@ -739,17 +800,27 @@ export function Plan() {
   )
 }
 
+/** 往右滑多遠露出「刪除」：剛好是按鈕寬。 */
+const SWIPE_W = 84
+
 /**
  * 合併清單的一列：打勾＋名稱＋金額。
  * 平常整個左半邊都是打勾鈕（轉帳那天一路點下去）；「編輯」模式下點名稱改開項目編輯器，
  * 名稱不會一打開頁面就是十幾顆誤觸會跳出編輯器的按鈕。打勾對整筆 allocation 生效，
  * 拆分項目在每個存放處各一列、會一起變。
+ *
+ * 往右滑露出左側的「刪除」（Benson 2026-10-01 要的；編輯模式的垃圾桶也還在）。
+ * 手勢照統計頁長條圖那套：`touch-action: pan-y` 把垂直捲動留給瀏覽器，
+ * 位移 >6px 且 |dy|>|dx| 就放手；確定是水平才 setPointerCapture。
+ * 拖過之後那一下 click 一定要吞掉，不然放手的瞬間會順便打勾。
  */
 function AllocRow({
   row,
   sym,
   allowance,
   editing,
+  swiped,
+  onSwipe,
   onToggle,
   onOpen,
   onAmount,
@@ -759,6 +830,8 @@ function AllocRow({
   sym: string
   allowance: boolean
   editing: boolean
+  swiped: boolean
+  onSwipe: (open: boolean) => void
   onToggle: () => void
   onOpen: () => void
   onAmount: (amount: number) => void
@@ -766,75 +839,156 @@ function AllocRow({
 }) {
   const done = row.alloc.done
   const label = done ? '標記為未轉帳' : '標記為已轉帳'
+  const rootRef = useRef<HTMLDivElement>(null)
+  const gesture = useRef<{ x: number; y: number; base: number; locked: boolean } | null>(null)
+  /** 這次按下之後有沒有真的拖過——有的話，接下來那個 click 不算數。 */
+  const dragged = useRef(false)
+  const [drag, setDrag] = useState<number | null>(null)
+  const offset = drag ?? (swiped ? SWIPE_W : 0)
+
+  // 滑開時點這一列以外的地方就收回去，跟 iOS 一樣。
+  useEffect(() => {
+    if (!swiped) return
+    const close = (e: PointerEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) onSwipe(false)
+    }
+    document.addEventListener('pointerdown', close, true)
+    return () => document.removeEventListener('pointerdown', close, true)
+  }, [swiped, onSwipe])
+
+  const end = () => {
+    const g = gesture.current
+    gesture.current = null
+    if (g?.locked && drag != null) onSwipe(drag > SWIPE_W / 2)
+    setDrag(null)
+  }
+
   return (
-    <div className="flex items-center gap-1 pr-1 py-0.5">
-      {/* 觸控目標 44×44；視覺圓圈維持 24。 */}
+    <div ref={rootRef} className="relative overflow-hidden">
+      {/* 滑開之前完全被前景蓋住；aria-hidden + tabIndex 讓它收著時不會被讀到或 Tab 到 */}
       <button
-        onClick={onToggle}
-        aria-label={label}
-        className="w-11 h-11 shrink-0 grid place-items-center rounded-full active:scale-90 transition"
+        onClick={onRemove}
+        aria-hidden={!swiped}
+        tabIndex={swiped ? 0 : -1}
+        className="absolute inset-y-0 left-0 grid place-items-center bg-bad text-on-bad text-sm font-semibold rounded-l-xl"
+        style={{ width: SWIPE_W }}
       >
-        <span
-          className={`w-6 h-6 grid place-items-center rounded-full ${
-            done ? 'bg-ok text-on-ok' : 'border-2 border-line text-transparent'
-          }`}
-        >
-          <IconCheck className="w-3.5 h-3.5" />
-        </span>
+        刪除
       </button>
 
-      <button
-        onClick={editing ? onOpen : onToggle}
-        aria-label={editing ? undefined : label}
-        className="flex items-center gap-2 flex-1 min-w-0 min-h-11 text-left active:opacity-60"
+      <div
+        className={`relative flex items-center gap-1 pr-1 py-0.5 bg-surface ${
+          drag == null ? 'transition-transform duration-200' : ''
+        }`}
+        style={{ transform: `translateX(${offset}px)`, touchAction: 'pan-y' }}
+        onPointerDown={(e) => {
+          if (e.pointerType === 'mouse' && e.button !== 0) return
+          dragged.current = false
+          gesture.current = { x: e.clientX, y: e.clientY, base: swiped ? SWIPE_W : 0, locked: false }
+        }}
+        onPointerMove={(e) => {
+          const g = gesture.current
+          if (!g) return
+          const dx = e.clientX - g.x
+          const dy = e.clientY - g.y
+          if (!g.locked) {
+            if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return
+            if (Math.abs(dy) > Math.abs(dx)) {
+              // 垂直手勢：使用者要捲頁面，放手讓瀏覽器接管。
+              gesture.current = null
+              return
+            }
+            g.locked = true
+            dragged.current = true
+            e.currentTarget.setPointerCapture(e.pointerId)
+          }
+          // 往左超過原位就不動；往右超過按鈕寬加一點阻尼，拉得出去但會彈回來。
+          const raw = g.base + dx
+          setDrag(raw <= 0 ? 0 : raw <= SWIPE_W ? raw : SWIPE_W + (raw - SWIPE_W) * 0.3)
+        }}
+        onPointerUp={end}
+        onPointerCancel={() => {
+          gesture.current = null
+          setDrag(null)
+        }}
+        onClickCapture={(e) => {
+          // 拖完放手的那一下、或滑開時點前景＝只是要收回去，都不能順便打勾或開編輯器。
+          if (dragged.current || swiped) {
+            e.stopPropagation()
+            e.preventDefault()
+            dragged.current = false
+            if (swiped) onSwipe(false)
+          }
+        }}
       >
-        <span
-          className="w-8 h-8 shrink-0 grid place-items-center rounded-xl text-base"
-          style={{ background: `${row.account?.color ?? '#6b7280'}1f` }}
+        {/* 觸控目標 44×44；視覺圓圈維持 24。 */}
+        <button
+          onClick={onToggle}
+          aria-label={label}
+          className="w-11 h-11 shrink-0 grid place-items-center rounded-full active:scale-90 transition"
         >
-          {row.account?.emoji ?? '💼'}
-        </span>
-        <span className="min-w-0">
           <span
-            className={`block text-sm truncate ${done ? 'text-muted' : ''} ${
-              editing ? 'underline decoration-line decoration-dotted underline-offset-4' : ''
+            className={`w-6 h-6 grid place-items-center rounded-full ${
+              done ? 'bg-ok text-on-ok' : 'border-2 border-line text-transparent'
             }`}
           >
-            {row.account?.name ?? '（項目已刪除）'}
-            {allowance && (
-              <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-brand-soft text-brand align-middle">
-                零用錢
-              </span>
-            )}
+            <IconCheck className="w-3.5 h-3.5" />
           </span>
-          {row.split && <span className="block text-[10px] text-faint truncate">拆分的其中一份</span>}
-        </span>
-      </button>
-
-      {/* 無邊框，十幾列讀起來才是一欄數字；focus 了才看得出是輸入框。
-          type=text 才能顯示千分位（跟本月收入同一套），輸入時把非數字都濾掉。 */}
-      <input
-        type="text"
-        inputMode="numeric"
-        aria-label={`${row.account?.name ?? '項目'}金額`}
-        value={row.amount ? row.amount.toLocaleString('en-US') : ''}
-        placeholder={`${sym}0`}
-        readOnly={row.split}
-        title={row.split ? '由下方「零用錢放在哪」的金額加總' : undefined}
-        onChange={(e) => onAmount(Number(e.target.value.replace(/\D/g, '')) || 0)}
-        className={`w-[88px] h-10 px-2 shrink-0 text-right rounded-lg tnum text-sm font-semibold outline-none bg-transparent transition ${
-          row.split ? 'text-muted' : done ? 'text-muted focus:bg-surface2' : 'focus:bg-surface2'
-        }`}
-      />
-      {editing && (
-        <button
-          onClick={onRemove}
-          aria-label="移除"
-          className="w-8 h-8 shrink-0 grid place-items-center rounded-lg text-faint active:text-bad"
-        >
-          <IconTrash className="w-4 h-4" />
         </button>
-      )}
+
+        <button
+          onClick={editing ? onOpen : onToggle}
+          aria-label={editing ? undefined : label}
+          className="flex items-center gap-2 flex-1 min-w-0 min-h-11 text-left active:opacity-60"
+        >
+          <span
+            className="w-8 h-8 shrink-0 grid place-items-center rounded-xl text-base"
+            style={{ background: `${row.account?.color ?? '#6b7280'}1f` }}
+          >
+            {row.account?.emoji ?? '💼'}
+          </span>
+          <span className="min-w-0">
+            <span
+              className={`block text-sm truncate ${done ? 'text-muted' : ''} ${
+                editing ? 'underline decoration-line decoration-dotted underline-offset-4' : ''
+              }`}
+            >
+              {row.account?.name ?? '（項目已刪除）'}
+              {allowance && (
+                <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-brand-soft text-brand align-middle">
+                  零用錢
+                </span>
+              )}
+            </span>
+            {row.split && <span className="block text-[10px] text-faint truncate">拆分的其中一份</span>}
+          </span>
+        </button>
+
+        {/* 無邊框，十幾列讀起來才是一欄數字；focus 了才看得出是輸入框。
+            type=text 才能顯示千分位（跟本月收入同一套），輸入時把非數字都濾掉。 */}
+        <input
+          type="text"
+          inputMode="numeric"
+          aria-label={`${row.account?.name ?? '項目'}金額`}
+          value={row.amount ? row.amount.toLocaleString('en-US') : ''}
+          placeholder={`${sym}0`}
+          readOnly={row.split}
+          title={row.split ? '由下方「零用錢放在哪」的金額加總' : undefined}
+          onChange={(e) => onAmount(Number(e.target.value.replace(/\D/g, '')) || 0)}
+          className={`w-[88px] h-10 px-2 shrink-0 text-right rounded-lg tnum text-sm font-semibold outline-none bg-transparent transition ${
+            row.split ? 'text-muted' : done ? 'text-muted focus:bg-surface2' : 'focus:bg-surface2'
+          }`}
+        />
+        {editing && (
+          <button
+            onClick={onRemove}
+            aria-label="移除"
+            className="w-8 h-8 shrink-0 grid place-items-center rounded-lg text-faint active:text-bad"
+          >
+            <IconTrash className="w-4 h-4" />
+          </button>
+        )}
+      </div>
     </div>
   )
 }
