@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useStore } from './store'
 import { recordNav } from './lib/persist'
 import { pinAfterRouteChange, watchNavPin } from './lib/navPin'
@@ -17,17 +17,24 @@ import { TxnSheet } from './components/TxnSheet'
 import { UpdateBanner } from './components/UpdateBanner'
 import { UndoToast } from './components/UndoToast'
 import { watchEdgeBack } from './lib/edgeBack'
-import { IconBack, IconChart, IconGear, IconHome, IconList, IconPlus } from './components/icons'
+import { IconBack, IconChart, IconHome, IconList, IconPlus, IconWallet } from './components/icons'
+import { allocationByWallet } from './lib/budget'
+import { currentPeriod } from './lib/date'
 
+/**
+ * 分頁列：首頁｜明細｜＋｜分配｜統計（2026-10-01 Benson 選的）。
+ * 「分配」從子頁面升成分頁；設定讓出位置、改成首頁右上角的齒輪（變成子頁面）。
+ * ＋ 要維持在正中間，所以左右各兩個——要再加分頁前先想清楚誰讓位。
+ */
 const TABS = [
-  { path: '/', label: '首頁', Icon: IconHome },
-  { path: '/records', label: '明細', Icon: IconList },
-  { path: '/stats', label: '統計', Icon: IconChart },
-  { path: '/settings', label: '設定', Icon: IconGear },
+  { path: '/', label: '首頁', title: '首頁', Icon: IconHome },
+  { path: '/records', label: '明細', title: '明細', Icon: IconList },
+  { path: '/plan', label: '分配', title: '薪水分配', Icon: IconWallet },
+  { path: '/stats', label: '統計', title: '統計', Icon: IconChart },
 ] as const
 
 const SUB_PAGES: Record<string, string> = {
-  '/plan': '薪水分配',
+  '/settings': '設定',
   '/accounts': '分配項目',
   '/wallets': '存放處',
   '/categories': '分類',
@@ -35,7 +42,7 @@ const SUB_PAGES: Record<string, string> = {
 }
 
 export function App() {
-  const { ready } = useStore()
+  const { ready, data } = useStore()
   const path = useRoute()
 
   const editId = segment(path, '/edit')
@@ -43,6 +50,17 @@ export function App() {
   // The sheet floats above whatever page was showing, so strip it from the base route.
   const base = sheetOpen ? (sessionStorage.getItem('lastBase') ?? '/') : path
   if (!sheetOpen) sessionStorage.setItem('lastBase', path)
+
+  /**
+   * 「分配」分頁上的紅點：這個月還有錢沒轉。判斷跟分配頁 hero 的「這個月還要轉」完全一致
+   * （allocationByWallet、不含現金、同一個 currentPeriod），首頁那張薪水分配卡拿掉之後，
+   * 這是唯一的提醒——兩邊說法不一樣就會一邊有紅點、一邊寫「都轉完了」。
+   */
+  const planMonth = currentPeriod(data.settings.monthStartDay)
+  const planPending = useMemo(
+    () => allocationByWallet(data, planMonth).some((r) => r.kind !== 'cash' && r.total - r.done > 0),
+    [data, planMonth],
+  )
 
   const subTitle = SUB_PAGES[base]
   const isTab = TABS.some((t) => t.path === base)
@@ -100,7 +118,7 @@ export function App() {
               </>
             ) : (
               <span className="px-2 font-semibold">
-                {TABS.find((t) => t.path === base)?.label ?? '記帳本'}
+                {TABS.find((t) => t.path === base)?.title ?? '記帳本'}
               </span>
             )}
           </div>
@@ -139,7 +157,7 @@ export function App() {
             </div>
 
             {TABS.slice(2).map((t) => (
-              <TabButton key={t.path} {...t} active={base === t.path} />
+              <TabButton key={t.path} {...t} active={base === t.path} dot={t.path === '/plan' && planPending} />
             ))}
           </div>
         </nav>
@@ -156,21 +174,31 @@ function TabButton({
   label,
   Icon,
   active,
+  dot,
 }: {
   path: string
   label: string
+  title?: string
   Icon: (p: { className?: string }) => React.ReactElement
   active: boolean
+  /** 紅點提醒（目前只有「分配」：這個月還有錢沒轉） */
+  dot?: boolean
 }) {
   return (
     <button
       // 再點一次目前的分頁＝捲回最上面（iOS 的分頁列都是這樣）
       onClick={() => (active ? window.scrollTo({ top: 0, behavior: 'smooth' }) : push(path))}
+      aria-label={dot ? `${label}（這個月還有錢沒轉）` : undefined}
       className={`h-full flex flex-col items-center justify-center gap-0.5 transition ${
         active ? 'text-brand' : 'text-muted'
       }`}
     >
-      <Icon className="w-6 h-6" />
+      <span className="relative">
+        <Icon className="w-6 h-6" />
+        {dot && (
+          <span className="absolute -top-0.5 -right-1 w-2.5 h-2.5 rounded-full bg-bad ring-2 ring-surface" />
+        )}
+      </span>
       <span className="text-[10px] font-medium">{label}</span>
     </button>
   )

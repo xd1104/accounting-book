@@ -115,8 +115,8 @@ export function navReport(): string {
   const label: Record<string, string> = {
     '/': '首',
     '/records': '明',
+    '/plan': '分',
     '/stats': '統',
-    '/settings': '設',
   }
   const parts = Object.keys(label)
     .filter((p) => navSeen[p])

@@ -6,7 +6,7 @@ import { money } from '../lib/format'
 import { Ring, budgetColor } from '../components/Ring'
 import { TxnRow } from '../components/TxnRow'
 import { useDeleteTxn } from '../lib/useDeleteTxn'
-import { IconChevronR, IconWallet } from '../components/icons'
+import { IconGear } from '../components/icons'
 import { push } from '../router'
 import { BackupChip, BackupPanel } from '../components/BackupBanner'
 
@@ -46,12 +46,6 @@ export function Home({ onEditTxn }: { onEditTxn: (id: string) => void }) {
         : 1
   const color = hasBudget ? budgetColor(progress) : 'var(--brand)'
 
-  const doneCount = s.plan?.allocations.filter((a) => a.done).length ?? 0
-  const totalCount = s.plan?.allocations.length ?? 0
-  const pending = s.plan?.allocations.filter((a) => !a.done) ?? []
-  const movedAmount = s.allocatedDone
-  const stillToMove = s.income - s.allocatedDone
-
   return (
     <div className="px-4 pb-6 space-y-4">
       {/* 頂列：日期＋備份 chip 合成一行，取代原本「首頁」＋日期兩行。 */}
@@ -60,6 +54,14 @@ export function Home({ onEditTxn }: { onEditTxn: (id: string) => void }) {
           {md} <span className="text-muted font-semibold">{weekday}</span>
         </div>
         <BackupChip onOpen={() => setBackupOpen(true)} />
+        {/* 設定從分頁列移到這裡（2026-10-01，分頁列讓位給「分配」），iPhone App 常見的位置 */}
+        <button
+          onClick={() => push('/settings')}
+          aria-label="設定"
+          className="w-11 h-11 -mr-2 shrink-0 grid place-items-center rounded-full text-muted active:bg-surface2"
+        >
+          <IconGear className="w-6 h-6" />
+        </button>
       </div>
       <BackupPanel open={backupOpen} onClose={() => setBackupOpen(false)} />
 
@@ -138,77 +140,6 @@ export function Home({ onEditTxn }: { onEditTxn: (id: string) => void }) {
           </div>
         </div>
       </div>
-
-      {/* salary allocation — 列「還沒轉的」，前 4 筆通常已轉、資訊量接近 0 */}
-      <button
-        onClick={() => push('/plan')}
-        className="w-full text-left bg-surface rounded-3xl p-4 active:scale-[0.99] transition"
-      >
-        <div className="flex items-center gap-2 mb-3">
-          <IconWallet className="w-5 h-5 text-brand" />
-          <span className="font-semibold flex-1">本月薪水分配</span>
-          {totalCount > 0 && (
-            <span
-              className={`text-xs px-2 py-1 rounded-full tnum ${
-                s.allocationComplete ? 'bg-ok/15 text-ok-ink' : 'bg-surface2 text-muted'
-              }`}
-            >
-              {s.allocationComplete ? '已完成' : `${doneCount}/${totalCount} 已轉`}
-            </span>
-          )}
-          <IconChevronR className="w-4 h-4 text-faint" />
-        </div>
-
-        {totalCount === 0 ? (
-          <div className="text-sm text-muted">
-            還沒設定這個月的分配 — 設定後就會自動算出每天可以花多少 →
-          </div>
-        ) : (
-          <>
-            <div className="h-1.5 rounded-full bg-surface2 overflow-hidden">
-              <div
-                className="h-full rounded-full bg-brand transition-[width] duration-500"
-                style={{ width: `${s.income > 0 ? Math.min(100, (movedAmount / s.income) * 100) : 0}%` }}
-              />
-            </div>
-
-            {s.allocationComplete ? (
-              <div className="text-sm text-muted mt-2">這個月都轉完了 🎉</div>
-            ) : (
-              <>
-                <div className="text-[12.5px] text-muted mt-2 tnum">
-                  已轉 <b className="font-bold text-ink">{money(movedAmount, sym)}</b> /{' '}
-                  {money(s.income, sym)} · 還沒轉{' '}
-                  <b className="font-bold text-ink">{money(stillToMove, sym)}</b>
-                  {s.unallocated !== 0 && (
-                    <span className={s.unallocated < 0 ? 'text-bad' : 'text-warn-ink'}>
-                      {' '}
-                      · {s.unallocated > 0 ? '未分配' : '超出'} {money(Math.abs(s.unallocated), sym)}
-                    </span>
-                  )}
-                </div>
-                <div className="space-y-1 mt-1.5">
-                  {pending.slice(0, 2).map((a) => {
-                    const acc = data.accounts.find((x) => x.id === a.accountId)
-                    return (
-                      <div key={a.accountId} className="flex items-center gap-2 text-[13px]">
-                        <span className="w-4 h-4 shrink-0 grid place-items-center rounded-full border-2 border-line" />
-                        <span className="flex-1 truncate">
-                          {acc?.emoji} {acc?.name ?? '（已刪除）'}
-                        </span>
-                        <span className="tnum text-muted">{money(a.amount, sym)}</span>
-                      </div>
-                    )
-                  })}
-                  {pending.length > 2 && (
-                    <div className="text-xs text-faint pl-6">還有 {pending.length - 2} 筆沒轉…</div>
-                  )}
-                </div>
-              </>
-            )}
-          </>
-        )}
-      </button>
 
       {/* today's records */}
       <div className="bg-surface rounded-3xl p-2">
