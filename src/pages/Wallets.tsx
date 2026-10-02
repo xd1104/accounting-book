@@ -4,6 +4,7 @@ import type { Wallet } from '../lib/types'
 import { WALLET_KIND_LABEL } from '../lib/defaults'
 import { WalletEditor } from '../components/WalletEditor'
 import { IconPlus } from '../components/icons'
+import { WalletBadge } from '../components/WalletBadge'
 
 export function Wallets() {
   const { data, addWallet, updateWallet, deleteWallet } = useStore()
@@ -37,12 +38,7 @@ export function Wallets() {
                     onClick={() => setEditing(w)}
                     className="w-full flex items-center gap-3 p-3 text-left active:bg-surface2 rounded-2xl"
                   >
-                    <span
-                      className="w-10 h-10 grid place-items-center rounded-full text-lg"
-                      style={{ background: `${w.color}22` }}
-                    >
-                      {w.emoji}
-                    </span>
+                    <WalletBadge name={w.name} emoji={w.emoji} color={w.color} size={40} />
                     <span className="flex-1 min-w-0">
                       <span className="block font-medium">{w.name}</span>
                       {usedBy.length > 0 && (

@@ -2,6 +2,7 @@ import type { AppData, Txn } from '../lib/types'
 import { money } from '../lib/format'
 import { usePhotoURL } from './Photo'
 import { SwipeRow } from './SwipeRow'
+import { WalletBadge } from './WalletBadge'
 
 export function TxnRow({
   txn,
@@ -56,7 +57,9 @@ export function TxnRow({
       </span>
       {showDate && <span className="shrink-0 text-xs text-muted tnum">{md}</span>}
       {/* wallet 為 null 是使用者在項目編輯器按過「不指定」，不補預設值（見 CLAUDE.md）。 */}
-      {wallet && <span className="shrink-0 text-[12.5px] opacity-75">{wallet.emoji}</span>}
+      {wallet && (
+        <WalletBadge name={wallet.name} emoji={wallet.emoji} color={wallet.color} size={16} className="opacity-80" />
+      )}
       <span
         className={`shrink-0 tnum text-[15px] font-bold ${txn.type === 'income' ? 'text-ok-ink' : ''}`}
       >

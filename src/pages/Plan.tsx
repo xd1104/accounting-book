@@ -12,6 +12,7 @@ import { Toggle } from '../components/Toggle'
 import { AccountEditor } from '../components/AccountEditor'
 import { Ring } from '../components/Ring'
 import { SwipeRow } from '../components/SwipeRow'
+import { WalletBadge } from '../components/WalletBadge'
 import { showUndo } from '../lib/undo'
 
 /** 分配項目在某個存放處裡的一筆——拆分過的項目在每個存放處各出現一筆，金額只算那一份。 */
@@ -315,10 +316,18 @@ export function Plan() {
 
   const totalCount = plan?.allocations.length ?? 0
   const transferAllDone = transferRows.length > 0 && transferLeft <= 0
-  const splitSummary = splitRows
-    .filter((r) => r.amount !== 0)
-    .map((r) => `${r.wallet.emoji} ${money(r.amount, sym)}`)
-    .join(' · ')
+  const splitParts = splitRows.filter((r) => r.amount !== 0)
+  const splitSummary = splitParts.length ? (
+    <span className="inline-flex items-center gap-1.5">
+      {splitParts.map((r, i) => (
+        <span key={r.wallet.id} className="inline-flex items-center gap-1">
+          {i > 0 && <span className="text-faint">·</span>}
+          <WalletBadge name={r.wallet.name} emoji={r.wallet.emoji} color={r.wallet.color} size={16} />
+          {money(r.amount, sym)}
+        </span>
+      ))}
+    </span>
+  ) : null
 
   return (
     <div className="px-4 pb-6 space-y-4">
@@ -461,12 +470,7 @@ export function Plan() {
           return (
             <div key={g.walletId ?? 'none'} className="bg-surface rounded-3xl p-2">
               <div className="flex items-center gap-2 px-2 pt-2">
-                <span
-                  className="w-9 h-9 shrink-0 grid place-items-center rounded-full text-base"
-                  style={{ background: `${g.color}22` }}
-                >
-                  {g.emoji}
-                </span>
+                <WalletBadge name={g.name} emoji={g.emoji} color={g.color} size={36} />
                 <div className="flex-1 min-w-0">
                   <div className="text-[15px] font-bold truncate">{g.name}</div>
                   {/* 一項都還沒轉時也要出一行字。留空白會讓卡片看起來像少載了東西。 */}
@@ -525,9 +529,8 @@ export function Plan() {
                 <span className="w-5 h-5 shrink-0 grid place-items-center rounded-full bg-ok text-on-ok">
                   <IconCheck className="w-3 h-3" />
                 </span>
-                <span className="flex-1 min-w-0 truncate text-[14px] text-muted">
-                  {g.emoji} {g.name}
-                </span>
+                <WalletBadge name={g.name} emoji={g.emoji} color={g.color} size={22} />
+                <span className="flex-1 min-w-0 truncate text-[14px] text-muted">{g.name}</span>
                 <span className="text-[14px] text-muted tnum">{money(g.total, sym)}</span>
                 <IconChevronR
                   className={`w-4 h-4 text-faint shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}
@@ -674,12 +677,7 @@ export function Plan() {
                   {splitRows.map(({ wallet: w, amount, row }) => (
                     <SwipeRow key={w.id} onDelete={() => removeSplit(w.id)} label="移除" className="rounded-lg">
                       <div className="flex items-center gap-2">
-                        <span
-                          className="w-8 h-8 shrink-0 grid place-items-center rounded-xl text-base"
-                          style={{ background: `${w.color}1f` }}
-                        >
-                          {w.emoji}
-                        </span>
+                        <WalletBadge name={w.name} emoji={w.emoji} color={w.color} size={32} />
                         <span className="flex-1 min-w-0">
                           <span className="block text-sm truncate">{w.name}</span>
                           <span className="block text-[10px] text-faint truncate">
@@ -740,7 +738,8 @@ export function Plan() {
                         }}
                         className="h-8 px-3 rounded-full bg-surface2 text-xs text-muted active:scale-95 transition"
                       >
-                        + {w.emoji} {w.name}
+                        + <WalletBadge name={w.name} emoji={w.emoji} color={w.color} size={16} className="mx-0.5" />{' '}
+                        {w.name}
                       </button>
                     ))}
                   </div>
@@ -928,7 +927,7 @@ function CollapsibleRow({
   children,
 }: {
   label: string
-  summary: string
+  summary: React.ReactNode
   /** 收合時把摘要染成警示色。設定沒填完的提示藏在摺疊區裡就等於沒有提示。 */
   warn?: boolean
   open: boolean

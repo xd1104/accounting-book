@@ -11,6 +11,7 @@ import { getPlan } from '../lib/budget'
 import { uid } from '../lib/defaults'
 import { compressImage, deletePhotos, putPhoto } from '../lib/photos'
 import { PhotoThumb, PhotoViewer } from './Photo'
+import { WalletBadge } from './WalletBadge'
 import { useDeleteTxn } from '../lib/useDeleteTxn'
 
 interface Props {
@@ -302,6 +303,16 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
           label={type === 'expense' ? '從哪裡付' : '收到哪裡'}
           emoji={selectedWallet?.emoji}
           color={selectedWallet?.color}
+          badge={
+            selectedWallet && (
+              <WalletBadge
+                name={selectedWallet.name}
+                emoji={selectedWallet.emoji}
+                color={selectedWallet.color}
+                size={24}
+              />
+            )
+          }
           text={selectedWallet?.name ?? '不指定'}
           muted={!selectedWallet}
           onClick={() => setPicker('wallet')}
@@ -439,12 +450,7 @@ export function TxnSheet({ open, onClose, editId, defaultDate }: Props) {
                       walletId === w.id ? 'bg-brand-soft' : 'active:bg-surface2'
                     }`}
                   >
-                    <span
-                      className="w-10 h-10 shrink-0 grid place-items-center rounded-full text-lg"
-                      style={{ background: `${w.color}22` }}
-                    >
-                      {w.emoji}
-                    </span>
+                    <WalletBadge name={w.name} emoji={w.emoji} color={w.color} size={40} />
                     <span className={`flex-1 ${walletId === w.id ? 'font-semibold text-brand' : ''}`}>
                       {w.name}
                     </span>
@@ -485,6 +491,7 @@ function PickerRow({
   text,
   muted,
   onClick,
+  badge,
 }: {
   label: string
   emoji?: string
@@ -492,6 +499,8 @@ function PickerRow({
   text: string
   muted?: boolean
   onClick: () => void
+  /** 有給就用它取代 emoji 圓點（存放處用 WalletBadge） */
+  badge?: React.ReactNode
 }) {
   return (
     <button
@@ -499,14 +508,14 @@ function PickerRow({
       className="w-full h-11 px-3 rounded-xl bg-surface2 flex items-center gap-2 text-left active:scale-[0.99] transition"
     >
       <span className="text-xs text-muted shrink-0">{label}</span>
-      {emoji && (
+      {badge ?? (emoji && (
         <span
           className="w-6 h-6 shrink-0 grid place-items-center rounded-full text-sm"
           style={{ background: `${color ?? '#6b7280'}22` }}
         >
           {emoji}
         </span>
-      )}
+      ))}
       <span className={`flex-1 min-w-0 truncate text-sm ${muted ? 'text-faint' : 'text-ink'}`}>
         {text}
       </span>

@@ -7,6 +7,7 @@ import { TxnRow } from '../components/TxnRow'
 import { useDeleteTxn } from '../lib/useDeleteTxn'
 import { IconChevronL, IconChevronR } from '../components/icons'
 import type { Txn } from '../lib/types'
+import { WalletBadge } from '../components/WalletBadge'
 
 type Filter = 'all' | 'expense' | 'income'
 
@@ -110,12 +111,7 @@ export function Records({ onEditTxn }: { onEditTxn: (id: string) => void }) {
           <div className="mt-3 pt-3 border-t border-line space-y-1.5">
             {walletRows.map((r) => (
               <div key={r.walletId ?? 'none'} className="flex items-center gap-2 text-sm">
-                <span
-                  className="w-6 h-6 shrink-0 grid place-items-center rounded-full text-xs"
-                  style={{ background: `${r.color}22` }}
-                >
-                  {r.emoji}
-                </span>
+                <WalletBadge name={r.name} emoji={r.emoji} color={r.color} size={24} />
                 <span className="flex-1 min-w-0 truncate text-muted">{r.name}</span>
                 {r.allocated > 0 || r.income > 0 || r.carriedIn !== 0 ? (
                   <>
