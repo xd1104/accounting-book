@@ -87,6 +87,17 @@ body,
   height: 100%;
 }
 
+/* 關掉整頁的回彈。**一定要寫在 html 上，寫在 body 上沒用。**
+ *
+ * 整頁捲動的是視口，而視口的 overscroll-behavior 只看根元素（html），不看 body。
+ * 2026-10-20 Benson 的螢幕錄影：在頂端往下拉、底端往上推時，iOS 的回彈會把
+ * fixed 的分頁列跟 sticky 的頂列一起帶走 —— 頂端回彈時分頁列被推出畫面底下，
+ * 底端回彈時被拉到畫面中間、還被內容蓋掉一半。當時這條只寫在 body 上，等於沒寫。
+ * 診斷那行（`h874 b874`）照樣全對，因為它只在換頁時量、量不到回彈中的那一刻。 */
+html {
+  overscroll-behavior-y: none;
+}
+
 body {
   margin: 0;
   background: var(--bg);
