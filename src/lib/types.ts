@@ -55,9 +55,19 @@ export interface Allocation {
   splits?: AllocationSplit[]
 }
 
+/** 本月收入的其中一項，例如薪水、獎金 */
+export interface IncomeItem {
+  id: string
+  name: string
+  amount: number
+}
+
 export interface MonthPlan {
   month: string // 'YYYY-MM'
+  /** 收入合計。有 incomes 時永遠＝它們的加總，預算計算只看這個數字 */
   income: number
+  /** 收入明細。舊資料沒有這欄、只有 income 一個總數——畫面上當成一項「收入」顯示 */
+  incomes?: IncomeItem[]
   allocations: Allocation[]
   /** 哪個帳戶的錢是零用錢，每日額度由它推算 */
   allowanceAccountId: string | null

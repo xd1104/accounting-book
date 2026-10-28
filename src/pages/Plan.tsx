@@ -3,8 +3,8 @@ import { useStore } from '../store'
 import { emptyPlan, resolvePlan, summarize } from '../lib/budget'
 import { addMonths, currentPeriod, formatMonthLabel, periodRange } from '../lib/date'
 import { money } from '../lib/format'
-import { KIND_LABEL, WALLET_KIND_LABEL } from '../lib/defaults'
-import type { Account, Allocation, AllocationSplit, MonthPlan } from '../lib/types'
+import { KIND_LABEL, WALLET_KIND_LABEL, uid } from '../lib/defaults'
+import type { Account, Allocation, AllocationSplit, IncomeItem, MonthPlan } from '../lib/types'
 import { allocationByWallet, allowanceByWallet } from '../lib/budget'
 import { IconCheck, IconChevronL, IconChevronR, IconPlus, IconTrash, IconX } from '../components/icons'
 import { Sheet } from '../components/Sheet'
@@ -38,7 +38,7 @@ interface ListGroup {
 }
 
 export function Plan() {
-  const { data, savePlan, restoreAllocation, restoreSplit, addAccount, updateAccount, addWallet, updateSettings } =
+  const { data, savePlan, restoreAllocation, restoreIncome, restoreSplit, addAccount, updateAccount, addWallet, updateSettings } =
     useStore()
   const sym = data.settings.currencySymbol
   const [month, setMonth] = useState(() => currentPeriod(data.settings.monthStartDay))
@@ -63,6 +63,37 @@ export function Plan() {
   const base = () => plan ?? emptyPlan(month, accounts.find((a) => a.kind === 'allowance')?.id ?? null)
 
   const write = (patch: Partial<MonthPlan>) => savePlan({ ...base(), ...patch })
+
+  /** 「本月收入」那行點開的編輯區。畫面狀態，不寫進 IndexedDB。 */
+  const [incomeOpen, setIncomeOpen] = useState(false)
+  /** 剛按「新增收入項目」的那一項，名稱欄自動對焦。 */
+  const [focusIncomeId, setFocusIncomeId] = useState<string | null>(null)
+  /**
+   * 收入明細。舊資料只有一個總數、沒有明細：當成一項「收入」顯示，第一次編輯時才真的存成一項。
+   * 那一項的 id 固定，只需要在同一個月裡不重複。
+   */
+  const incomeItems: IncomeItem[] =
+    plan?.incomes ?? (plan?.income ? [{ id: 'income', name: '收入', amount: plan.income }] : [])
+  /** 存明細時合計一起改：預算計算（summarize）只看 income。 */
+  const writeIncomes = (incomes: IncomeItem[]) =>
+    write({ incomes, income: incomes.reduce((n, i) => n + i.amount, 0) })
+  const setIncomeItem = (id: string, patch: Partial<IncomeItem>) =>
+    writeIncomes(incomeItems.map((i) => (i.id === id ? { ...i, ...patch } : i)))
+  const addIncomeItem = () => {
+    const id = uid()
+    setFocusIncomeId(id)
+    writeIncomes([...incomeItems, { id, name: '', amount: 0 }])
+  }
+  const removeIncomeItem = (id: string) => {
+    const index = incomeItems.findIndex((i) => i.id === id)
+    const item = incomeItems[index]
+    const month0 = base().month
+    writeIncomes(incomeItems.filter((i) => i.id !== id))
+    showUndo({
+      label: `已刪除「${item?.name || '收入項目'}」`,
+      undo: () => restoreIncome(month0, item, index),
+    })
+  }
 
   const setAllocation = (accountId: string, amount: number) => {
     const b = base()
@@ -409,23 +440,25 @@ export function Plan() {
         )}
 
         <div className="h-px bg-line mx-4" />
-        {/* 收入原本藏在「本月分配」摺疊區裡、這裡只唯讀顯示一次——兩處合成一處。 */}
+        {/* 收入原本藏在「本月分配」摺疊區裡、這裡只唯讀顯示一次——兩處合成一處。
+            2026-10-28 改成可以拆項目（薪水、獎金…）：這行顯示合計，點開才編輯各項。 */}
         <div className="flex items-center justify-between gap-2 px-4 py-1.5 text-[12.5px]">
-          <label className="flex items-center min-w-0 text-muted">
+          <button
+            onClick={() => setIncomeOpen((v) => !v)}
+            aria-expanded={incomeOpen}
+            className="flex items-center min-w-0 min-h-10 text-muted active:opacity-60"
+          >
             <span className="shrink-0">本月收入</span>
-            <span className="ml-1.5 text-faint">{sym}</span>
-            {/* type=text 才能顯示千分位。輸入時把非數字都濾掉。
-                字級不能低於 16px：iOS 會自動放大（見 index.css 那條無層級規則）。 */}
-            <input
-              type="text"
-              inputMode="numeric"
-              aria-label="本月收入"
-              value={plan?.income ? plan.income.toLocaleString('en-US') : ''}
-              placeholder="0"
-              onChange={(e) => write({ income: Number(e.target.value.replace(/\D/g, '')) || 0 })}
-              className="w-[7.5rem] h-10 px-1 rounded-lg bg-transparent font-bold text-ink tnum outline-none focus:bg-surface2 placeholder:text-faint"
+            <span className="ml-1.5 font-bold text-ink tnum text-[16px]">
+              {plan?.income ? money(plan.income, sym) : <span className="text-faint font-normal">{sym}0</span>}
+            </span>
+            {incomeItems.length > 1 && !incomeOpen && (
+              <span className="ml-1.5 text-faint tnum">{incomeItems.length} 項</span>
+            )}
+            <IconChevronR
+              className={`w-4 h-4 ml-0.5 text-faint shrink-0 transition-transform ${incomeOpen ? 'rotate-90' : ''}`}
             />
-          </label>
+          </button>
           {totalCount > 0 && (
             <span
               className={`shrink-0 font-semibold tnum ${
@@ -438,6 +471,50 @@ export function Plan() {
             </span>
           )}
         </div>
+        {incomeOpen && (
+          <div className="px-4 pb-3 space-y-1">
+            {incomeItems.map((item) => (
+              <div key={item.id} className="flex items-center gap-1">
+                {/* 字級不能低於 16px：iOS 會自動放大（見 index.css 那條無層級規則）。 */}
+                <input
+                  type="text"
+                  aria-label="收入項目名稱"
+                  value={item.name}
+                  placeholder="項目名稱，例如薪水"
+                  autoFocus={item.id === focusIncomeId}
+                  onChange={(e) => setIncomeItem(item.id, { name: e.target.value })}
+                  className="flex-1 min-w-0 h-10 px-2 rounded-lg bg-surface2/60 outline-none focus:bg-surface2 placeholder:text-faint"
+                />
+                {/* type=text 才能顯示千分位（跟分配列同一套），輸入時把非數字都濾掉 */}
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  aria-label={`${item.name || '收入項目'}金額`}
+                  value={item.amount ? item.amount.toLocaleString('en-US') : ''}
+                  placeholder={`${sym}0`}
+                  onChange={(e) =>
+                    setIncomeItem(item.id, { amount: Number(e.target.value.replace(/\D/g, '')) || 0 })
+                  }
+                  className="w-[104px] h-10 px-2 shrink-0 text-right rounded-lg tnum font-semibold bg-surface2/60 outline-none focus:bg-surface2 placeholder:text-faint"
+                />
+                <button
+                  onClick={() => removeIncomeItem(item.id)}
+                  aria-label={`刪除收入項目${item.name ? `「${item.name}」` : ''}`}
+                  className="w-9 h-10 shrink-0 grid place-items-center rounded-lg text-faint active:text-bad"
+                >
+                  <IconTrash className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+            <button
+              onClick={addIncomeItem}
+              className="w-full h-10 flex items-center justify-center gap-1 rounded-lg text-[13px] font-semibold text-brand active:bg-surface2"
+            >
+              <IconPlus className="w-4 h-4" />
+              新增收入項目
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 本月分配：原本的「還要轉」與「本月分配」是同一份資料列兩次，合成一份依存放處分組的清單。

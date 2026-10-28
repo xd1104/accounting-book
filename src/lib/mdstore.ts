@@ -1,4 +1,4 @@
-import type { Account, AppData, Category, MonthPlan, Settings, Txn, Wallet } from './types'
+import type { Account, AppData, Category, IncomeItem, MonthPlan, Settings, Txn, Wallet } from './types'
 import { DEFAULT_SETTINGS, emptyData } from './defaults'
 
 /**
@@ -167,6 +167,9 @@ export function serializeMonth(month: string, plan: MonthPlan | null, txns: Txn[
     hasPlan: !!plan,
   })
   if (plan) out += section('分配', plan.allocations)
+  // 只有拆過項目的月份才寫這段，舊月份的檔案內容不變（不然每個月都會變成「改過」去同步）。
+  // 放在「記錄」前面：parseSection 找第一個標題，記錄的備註文字裡可能剛好有同樣的字。
+  if (plan?.incomes?.length) out += section('收入', plan.incomes)
   out += section('記錄', sorted)
   return out
 }
@@ -175,6 +178,7 @@ export function parseMonth(month: string, text: string): MonthFile {
   const { fields, body } = parseFrontMatter(text)
   const txns = parseSection(body, '記錄') as Txn[]
   const allocations = parseSection(body, '分配') as MonthPlan['allocations']
+  const incomes = (parseSection(body, '收入') as IncomeItem[]).filter((i) => i && i.id)
   const hasPlan = fields.hasPlan === true || allocations.length > 0 || !!fields.income
   return {
     month,
@@ -182,6 +186,7 @@ export function parseMonth(month: string, text: string): MonthFile {
       ? {
           month,
           income: (fields.income as number) || 0,
+          ...(incomes.length ? { incomes } : {}),
           allocations,
           allowanceAccountId: (fields.allowanceAccountId as string) ?? null,
           dailyAllowanceOverride: (fields.dailyAllowanceOverride as number) ?? null,

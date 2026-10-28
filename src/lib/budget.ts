@@ -39,6 +39,9 @@ export function resolvePlan(
     plan: {
       ...prev,
       month,
+      // 收入每個月自己填，不沿用（2026-10-28 Benson 定）；分配才沿用
+      income: 0,
+      incomes: [],
       allocations: prev.allocations.map((a) => ({ ...a, done: false, doneAt: undefined })),
     },
     carried: true,

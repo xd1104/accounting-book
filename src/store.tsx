@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { Account, Allocation, AllocationSplit, AppData, Category, MonthPlan, Settings, Txn, Wallet } from './lib/types'
+import type { Account, Allocation, AllocationSplit, AppData, Category, IncomeItem, MonthPlan, Settings, Txn, Wallet } from './lib/types'
 import { LocalStorageAdapter } from './lib/storage'
 import type { StorageAdapter } from './lib/storage'
 import { emptyData, uid } from './lib/defaults'
@@ -26,6 +26,8 @@ interface Store {
   savePlan: (plan: MonthPlan) => void
   /** 把剛刪掉的分配項目放回那個月份的原位置。用 mutate 讀最新資料，不怕閉包過期。 */
   restoreAllocation: (month: string, alloc: Allocation, index: number) => void
+  /** 把剛刪掉的收入項目放回原位置，合計跟著加回去。 */
+  restoreIncome: (month: string, item: IncomeItem, index: number) => void
   /** 把剛移除的「零用錢放在哪」那一格放回原位（金額照舊，總額跟著加回去）。 */
   restoreSplit: (month: string, accountId: string, split: AllocationSplit, index: number) => void
   /**
@@ -319,6 +321,16 @@ export function StoreProvider({
           const allocations = [...p.allocations]
           allocations.splice(Math.min(index, allocations.length), 0, alloc)
           return { ...d, plans: { ...d.plans, [month]: { ...p, allocations } } }
+        })
+      },
+      restoreIncome(month, item, index) {
+        mutate((d) => {
+          const p = d.plans[month]
+          if (!p || p.incomes?.some((i) => i.id === item.id)) return d
+          const incomes = [...(p.incomes ?? [])]
+          incomes.splice(Math.min(index, incomes.length), 0, item)
+          const income = incomes.reduce((n, i) => n + i.amount, 0)
+          return { ...d, plans: { ...d.plans, [month]: { ...p, incomes, income } } }
         })
       },
       restoreSplit(month, accountId, split, index) {
